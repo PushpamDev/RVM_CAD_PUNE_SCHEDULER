@@ -32,64 +32,55 @@ const formatTime = (timeStr: string): string => {
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 };
 
-const colorClasses = [
-    'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700',
-    'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700',
-    'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700',
-    'bg-indigo-100 text-indigo-800 border-indigo-300 hover:bg-indigo-200 dark:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-700',
-    'bg-pink-100 text-pink-800 border-pink-300 hover:bg-pink-200 dark:bg-pink-900/50 dark:text-pink-300 dark:border-pink-700',
-    'bg-sky-100 text-sky-800 border-sky-300 hover:bg-sky-200 dark:bg-sky-900/50 dark:text-sky-300 dark:border-sky-700',
-];
+const getBatchProgressColor = (startDateStr: string, endDateStr: string): string => {
+    const today = new Date();
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
 
-const getConsistentColor = (id: string): string => {
-    const charCodeSum = id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    return colorClasses[charCodeSum % colorClasses.length];
+    if (endDate <= startDate) return 'bg-gray-100 text-gray-800 border-gray-300';
+
+    const totalDuration = endDate.getTime() - startDate.getTime();
+    const elapsedTime = today.getTime() - startDate.getTime();
+    const progress = (elapsedTime / totalDuration) * 100;
+
+    if (progress < 33) {
+        return 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700';
+    } else if (progress >= 33 && progress <= 66) {
+        return 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700';
+    } else {
+        return 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700';
+    }
 };
+
 
 // --- Child Components ---
 
-const ScheduleSkeleton = () => (
-    <Card>
-        <CardHeader>
-            <Skeleton className="h-8 w-1/2 rounded-md" />
-            <Skeleton className="h-4 w-1/3 rounded-md" />
-        </CardHeader>
-        <CardContent>
-            <div className="grid grid-cols-8 border rounded-lg">
-                <div className="p-2 border-r"><Skeleton className="h-6 w-full rounded-md" /></div>
-                {Array.from({ length: 7 }).map((_, i) => (
-                    <div key={i} className="p-2 text-center border-r last:border-r-0">
-                        <Skeleton className="h-6 w-1/2 mx-auto rounded-md" />
-                        <Skeleton className="h-4 w-1/3 mx-auto mt-1 rounded-md" />
-                    </div>
-                ))}
-                {Array.from({ length: 5 }).map((_, rowIndex) => (
-                    <React.Fragment key={rowIndex}>
-                        <div className="p-2 border-t border-r"><Skeleton className="h-10 w-full rounded-md" /></div>
-                        {Array.from({ length: 7 }).map((_, colIndex) => (
-                            <div key={colIndex} className="p-2 border-t border-r last:border-r-0"><Skeleton className="h-10 w-full rounded-md" /></div>
-                        ))}
-                    </React.Fragment>
-                ))}
-            </div>
-        </CardContent>
-    </Card>
+// --- NEW COMPONENT: Color Legend ---
+const ScheduleLegend = () => (
+    <div className="flex items-center space-x-4 pt-4 border-t mt-4">
+        <div className="text-sm font-semibold text-muted-foreground">Legend:</div>
+        <div className="flex items-center space-x-2">
+            <div className="h-3 w-3 rounded-full bg-blue-500" />
+            <span className="text-xs text-muted-foreground">Started</span>
+        </div>
+        <div className="flex items-center space-x-2">
+            <div className="h-3 w-3 rounded-full bg-amber-500" />
+            <span className="text-xs text-muted-foreground">In Progress</span>
+        </div>
+        <div className="flex items-center space-x-2">
+            <div className="h-3 w-3 rounded-full bg-green-500" />
+            <span className="text-xs text-muted-foreground">Ending Soon</span>
+        </div>
+    </div>
 );
 
-const SchedulePlaceholder = ({ message, children }: { message: string; children: React.ReactNode }) => (
-    <Card className="flex items-center justify-center h-96">
-        <div className="text-center text-muted-foreground">
-            {children}
-            <p className="mt-4 font-semibold">{message}</p>
-        </div>
-    </Card>
-);
+const ScheduleSkeleton = () => ( <Card> <CardHeader> <Skeleton className="h-8 w-1/2 rounded-md" /> <Skeleton className="h-4 w-1/3 rounded-md" /> </CardHeader> <CardContent> <div className="grid grid-cols-8 border rounded-lg"> <div className="p-2 border-r"><Skeleton className="h-6 w-full rounded-md" /></div> {Array.from({ length: 7 }).map((_, i) => ( <div key={i} className="p-2 text-center border-r last:border-r-0"> <Skeleton className="h-6 w-1/2 mx-auto rounded-md" /> <Skeleton className="h-4 w-1/3 mx-auto mt-1 rounded-md" /> </div> ))} {Array.from({ length: 5 }).map((_, rowIndex) => ( <React.Fragment key={rowIndex}> <div className="p-2 border-t border-r"><Skeleton className="h-10 w-full rounded-md" /></div> {Array.from({ length: 7 }).map((_, colIndex) => ( <div key={colIndex} className="p-2 border-t border-r last:border-r-0"><Skeleton className="h-10 w-full rounded-md" /></div> ))} </React.Fragment> ))} </div> </CardContent> </Card> );
+const SchedulePlaceholder = ({ message, children }: { message: string; children: React.ReactNode }) => ( <Card className="flex items-center justify-center h-96"> <div className="text-center text-muted-foreground"> {children} <p className="mt-4 font-semibold">{message}</p> </div> </Card> );
 
 // --- Main Component ---
 export default function ScheduleView() {
     const { faculties, batches, loading } = useBatchData();
     const { user } = useAuth();
-
     const [selectedFaculty, setSelectedFaculty] = useState<string>('');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -116,20 +107,17 @@ export default function ScheduleView() {
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 6);
         weekEnd.setHours(23, 59, 59, 999);
-
         const facultyBatches = batches.filter(b => b.faculty_id === selectedFaculty && new Date(b.start_date) <= weekEnd && new Date(b.end_date) >= weekStart);
         const timePoints = new Set<string>();
         facultyBatches.forEach(b => { timePoints.add(b.start_time); timePoints.add(b.end_time); });
         const sortedTimePoints = Array.from(timePoints).sort((a, b) => a.localeCompare(b));
         const timeSlots = sortedTimePoints.slice(0, -1).map((start, i) => ({ start, end: sortedTimePoints[i + 1] })).filter(slot => slot.start !== slot.end);
-
         const dayDates = daysOfWeek.reduce((acc, day, index) => {
             const date = new Date(weekStart);
             date.setDate(date.getDate() + index);
             acc[day] = date;
             return acc;
         }, {} as { [day: string]: Date });
-
         const grid = daysOfWeek.reduce((acc, day) => {
             acc[day] = timeSlots.reduce((timeAcc, slot) => {
                 timeAcc[slot.start] = [];
@@ -137,7 +125,6 @@ export default function ScheduleView() {
             }, {} as { [time: string]: any[] });
             return acc;
         }, {} as { [day: string]: { [time: string]: any[] } });
-
         facultyBatches.forEach(batch => {
             batch.days_of_week.forEach(day => {
                 const currentDate = dayDates[day];
@@ -150,21 +137,18 @@ export default function ScheduleView() {
                 }
             });
         });
-
         return { grid, timeSlots, hasBatchesThisWeek: facultyBatches.length > 0 };
     }, [selectedFaculty, batches, weekStart, loading]);
 
     const dayViewData = useMemo(() => {
         if (!selectedFaculty || loading) return null;
         const dayOfWeek = daysOfWeek[currentDate.getDay() === 0 ? 6 : currentDate.getDay() - 1];
-        
         const dayBatches = batches.filter(b => 
             b.faculty_id === selectedFaculty &&
             b.days_of_week.includes(dayOfWeek) &&
             currentDate >= new Date(b.start_date) &&
             currentDate <= new Date(b.end_date)
         ).sort((a, b) => a.start_time.localeCompare(b.start_time));
-        
         return { batches: dayBatches };
     }, [selectedFaculty, batches, currentDate, loading]);
 
@@ -175,12 +159,13 @@ export default function ScheduleView() {
 
         if (viewMode === 'week') {
             if (!weekViewData || !weekViewData.hasBatchesThisWeek) return <SchedulePlaceholder message="No batches scheduled for this faculty in the selected week."><CalendarX className="h-16 w-16 text-gray-300" /></SchedulePlaceholder>;
-
             return (
                 <Card>
                     <CardHeader>
                         <CardTitle>Schedule for {faculties.find(f => f.id === selectedFaculty)?.name}</CardTitle>
                         <CardDescription>Displaying scheduled batches for the selected week.</CardDescription>
+                        {/* --- ADDED LEGEND --- */}
+                        <ScheduleLegend />
                     </CardHeader>
                     <CardContent className="overflow-x-auto">
                         <div className="grid border rounded-lg" style={{ gridTemplateColumns: 'minmax(120px, auto) repeat(7, minmax(140px, 1fr))' }}>
@@ -206,7 +191,7 @@ export default function ScheduleView() {
                                             {weekViewData.grid[day]?.[slot.start]?.map(batch => (
                                                 <Popover key={batch.id}>
                                                     <PopoverTrigger asChild>
-                                                        <Badge variant="outline" className={cn("text-xs w-full block truncate text-left p-2 h-auto font-normal cursor-pointer border-2", getConsistentColor(batch.id))}>
+                                                        <Badge variant="outline" className={cn("text-xs w-full block truncate text-left p-2 h-auto font-normal cursor-pointer border-2", getBatchProgressColor(batch.start_date, batch.end_date))}>
                                                             <p className="font-semibold">{batch.name}</p>
                                                             <p className="opacity-80">{batch.skill?.name ?? 'N/A'}</p>
                                                         </Badge>
@@ -239,18 +224,19 @@ export default function ScheduleView() {
 
         if (viewMode === 'day') {
              if (!dayViewData || dayViewData.batches.length === 0) return <SchedulePlaceholder message="No batches scheduled for this day."><CalendarX className="h-16 w-16 text-gray-300" /></SchedulePlaceholder>;
-
              return (
                 <Card>
                     <CardHeader>
                         <CardTitle>Schedule for {currentDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</CardTitle>
                         <CardDescription>Displaying all batches scheduled for {faculties.find(f => f.id === selectedFaculty)?.name} on this day.</CardDescription>
+                        {/* --- ADDED LEGEND --- */}
+                        <ScheduleLegend />
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {dayViewData.batches.map(batch => (
                              <Popover key={batch.id}>
                                 <PopoverTrigger asChild>
-                                    <div className={cn("flex items-center justify-between p-4 rounded-lg border-l-4 cursor-pointer", getConsistentColor(batch.id))}>
+                                    <div className={cn("flex items-center justify-between p-4 rounded-lg border-l-4 cursor-pointer", getBatchProgressColor(batch.start_date, batch.end_date))}>
                                         <div>
                                             <p className="font-bold">{batch.name}</p>
                                             <p className="text-sm">{batch.skill?.name ?? 'N/A'}</p>
@@ -261,7 +247,6 @@ export default function ScheduleView() {
                                         </div>
                                     </div>
                                 </PopoverTrigger>
-                                {/* --- FIX: Added the missing Popover Content for Day View --- */}
                                 <PopoverContent className="w-64">
                                     <div className="space-y-2">
                                         <h4 className="font-medium leading-none">{batch.name}</h4>
@@ -282,10 +267,8 @@ export default function ScheduleView() {
                 </Card>
             );
         }
-
         return null;
     };
-
 
     return (
         <div className="space-y-6">
@@ -293,7 +276,6 @@ export default function ScheduleView() {
                 <h1 className="text-3xl font-bold tracking-tight">Faculty Schedule</h1>
                 <p className="text-muted-foreground">A weekly overview of faculty batch schedules.</p>
             </div>
-
             <Card>
                 <CardHeader>
                     <CardTitle>Schedule Filters</CardTitle>
@@ -320,7 +302,6 @@ export default function ScheduleView() {
                     </div>
                 </CardContent>
             </Card>
-
             {renderContent()}
         </div>
     );
