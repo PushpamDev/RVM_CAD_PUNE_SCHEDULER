@@ -128,6 +128,22 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
     setFormData(prev => ({ ...prev, daysOfWeek: prev.daysOfWeek.includes(day) ? prev.daysOfWeek.filter(d => d !== day) : [...prev.daysOfWeek, day] }));
   };
 
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'startTime' | 'endTime') => {
+    const val = e.target.value;
+    let digits = val.replace(/[^0-9]/g, '');
+
+    if (digits.length > 4) {
+      digits = digits.substring(0, 4);
+    }
+
+    let formattedValue = digits;
+    if (digits.length > 2) {
+      formattedValue = `${digits.substring(0, 2)}:${digits.substring(2)}`;
+    }
+    
+    setFormData({ ...formData, [field]: formattedValue });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.skillId) {
@@ -180,11 +196,11 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="startTime">Start Time</Label>
-              <Input id="startTime" type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} required />
+              <Input id="startTime" type="text" placeholder="HH:MM" value={formData.startTime} onChange={(e) => handleTimeChange(e, 'startTime')} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="endTime">End Time</Label>
-              <Input id="endTime" type="time" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} required />
+              <Input id="endTime" type="text" placeholder="HH:MM" value={formData.endTime} onChange={(e) => handleTimeChange(e, 'endTime')} required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
