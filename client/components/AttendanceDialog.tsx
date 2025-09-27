@@ -10,34 +10,60 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { DatePicker } from "./ui/date-picker";
 import { Badge } from './ui/badge'; // --- ENHANCEMENT: Import Badge ---
 import { API_BASE_URL } from '@/lib/api';
-import type { Student, Batch } from '../types/batchManagement'; // --- ENHANCEMENT: Import from central types file ---
+import type { Batch, Student } from '../types/batchManagement';
 
 export interface AttendanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  batch: Batch;
-  students: Student[];
+  batch: Batch | null;
   onAttendanceMarked: () => void;
   isFeePending: (remark: string) => boolean;
 }
 
-export function AttendanceDialog({ open, onOpenChange, batch, students, onAttendanceMarked, isFeePending }: AttendanceDialogProps) {
+export function AttendanceDialog({ open, onOpenChange, batch, onAttendanceMarked, isFeePending }: AttendanceDialogProps) {
   const { token } = useAuth();
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
   const [date, setDate] = useState<Date | undefined>(new Date());
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (students) {
-      const initialAttendance = students.reduce((acc, student) => {
-        acc[student.id] = true; // Default to present
-        return acc;
-      }, {} as Record<string, boolean>);
-      setAttendance(initialAttendance);
+    const fetchStudents = async () => {
+      if (batch && token) {
+        setLoading(true);
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/batches/${batch.id}/students`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!response.ok) throw new Error('Failed to fetch students.');
+          const data: Student[] = await response.json();
+          setStudents(data);
+          const initialAttendance = data.reduce((acc, student) => {
+            acc[student.id] = true;
+            return acc;
+          }, {} as Record<string, boolean>);
+          setAttendance(initialAttendance);
+        } catch (error) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: error instanceof Error ? error.message : "An unknown error occurred.",
+          });
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    if (open) {
+      fetchStudents();
+      setDate(new Date());
+    } else {
+      setStudents([]);
+      setAttendance({});
     }
-    // Reset date to today when dialog opens for a new batch
-    setDate(new Date());
-  }, [students, open]);
+  }, [batch, open, token]);
 
   const handleAttendanceChange = (studentId: string, isPresent: boolean) => {
     setAttendance((prev) => ({ ...prev, [studentId]: isPresent }));
@@ -92,6 +118,8 @@ export function AttendanceDialog({ open, onOpenChange, batch, students, onAttend
     }
   };
 
+  if (!batch) return null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -129,29 +157,42 @@ export function AttendanceDialog({ open, onOpenChange, batch, students, onAttend
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {students.map((student) => (
-                  <TableRow key={student.id}>
-                    <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                            <span>{student.name}</span>
-                            {/* --- ENHANCEMENT: Clearer Fee Status Badge --- */}
-                            {isFeePending(student.remarks) && (
-                                <Badge variant="destructive">Fee Pending</Badge>
-                            )}
-                        </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Checkbox
-                        className="h-5 w-5"
-                        checked={attendance[student.id] ?? false}
-                        onCheckedChange={(checked) =>
-                          handleAttendanceChange(student.id, !!checked)
-                        }
-                        aria-label={`Mark ${student.name} as present`}
-                      />
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center h-24">
+                      Loading students...
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : students.length > 0 ? (
+                  students.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{student.name}</span>
+                          {isFeePending(student.remarks) && (
+                            <Badge variant="destructive">Fee Pending</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Checkbox
+                          className="h-5 w-5"
+                          checked={attendance[student.id] ?? false}
+                          onCheckedChange={(checked) =>
+                            handleAttendanceChange(student.id, !!checked)
+                          }
+                          aria-label={`Mark ${student.name} as present`}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center h-24">
+                      No students found for this batch.
+                    </TableCell>geo
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>

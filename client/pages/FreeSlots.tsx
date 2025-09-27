@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Search, SlidersHorizontal, CalendarX } from "lucide-react";
-import { DateRange } from "react-day-picker";
+import { Search, SlidersHorizontal, CalendarX } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input"; 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label"; // <-- ADD THIS IMPORT
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -32,11 +29,8 @@ interface FreeSlot {
 }
 
 // --- Helper Functions ---
-const formatDateForAPI = (date: Date): string => format(date, "yyyy-MM-dd");
-
 const formatDisplayDate = (dateString: string): string => {
-  // The date from API is yyyy-mm-dd, which JS Date constructor handles correctly.
-  const date = new Date(dateString);
+  const date = new Date(dateString.replace(/-/g, '\/'));
   return format(date, "EEEE, MMMM d, yyyy");
 };
 
@@ -47,7 +41,10 @@ export default function FreeSlots() {
   // --- State Management ---
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [date, setDate] = useState<DateRange | undefined>();
+  
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  
   const [selectedSkill, setSelectedSkill] = useState<string>("");
   const [selectedFaculty, setSelectedFaculty] = useState<string>("");
   
@@ -84,11 +81,20 @@ export default function FreeSlots() {
   }, [toast]);
 
   const handleSearch = async () => {
-    if (!date?.from || !date?.to) {
+    if (!startDate || !endDate) {
       toast({
         variant: "destructive",
         title: "Invalid Date Range",
-        description: "Please select a start and end date.",
+        description: "Please select both a start and end date.",
+      });
+      return;
+    }
+    
+    if (new Date(startDate) > new Date(endDate)) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Date Range",
+        description: "The start date cannot be after the end date.",
       });
       return;
     }
@@ -97,13 +103,12 @@ export default function FreeSlots() {
     setHasSearched(true);
     setFreeSlots([]);
 
-    const params = new URLSearchParams({
-      startDate: formatDateForAPI(date.from),
-      endDate: formatDateForAPI(date.to),
-    });
+    const params = new URLSearchParams({ startDate, endDate });
 
-    if (selectedFaculty) params.append('facultyId', selectedFaculty);
-    if (selectedSkill) params.append('skillId', selectedSkill);
+    // --- THIS IS THE FIX ---
+    // Changed parameter names to match the backend API
+    if (selectedFaculty) params.append('selectedFaculty', selectedFaculty);
+    if (selectedSkill) params.append('selectedSkill', selectedSkill);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/free-slots?${params.toString()}`);
@@ -125,14 +130,14 @@ export default function FreeSlots() {
   };
 
   const handleClear = () => {
-    setDate(undefined);
+    setStartDate("");
+    setEndDate("");
     setSelectedFaculty("");
     setSelectedSkill("");
     setFreeSlots([]);
     setHasSearched(false);
   };
-
-  // --- Render Logic ---
+  
   const renderResults = () => {
     if (isLoading) {
       return (
@@ -143,7 +148,6 @@ export default function FreeSlots() {
         </div>
       );
     }
-
     if (!hasSearched) {
       return (
         <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-48">
@@ -153,7 +157,6 @@ export default function FreeSlots() {
         </div>
       );
     }
-
     if (freeSlots.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-48">
@@ -163,23 +166,18 @@ export default function FreeSlots() {
         </div>
       );
     }
-
     return (
       <div className="space-y-6">
         {freeSlots.map(({ faculty, slots }) => (
           <Card key={faculty.id} className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="text-lg">{faculty.name}</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-lg">{faculty.name}</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               {slots.map(slot => (
                 <div key={slot.date} className="p-4 border rounded-md">
                   <h4 className="font-semibold text-primary mb-2">{formatDisplayDate(slot.date)}</h4>
                   <div className="flex flex-wrap gap-2">
                     {slot.time.length > 0 ? (
-                      slot.time.map((time, index) => (
-                        <Badge key={index} variant="secondary">{time}</Badge>
-                      ))
+                      slot.time.map((time, index) => <Badge key={index} variant="secondary">{time}</Badge>)
                     ) : (
                       <p className="text-sm text-muted-foreground">No specific slots available on this day.</p>
                     )}
@@ -206,48 +204,32 @@ export default function FreeSlots() {
             <SlidersHorizontal className="h-5 w-5"/>
             <CardTitle>Search Filters</CardTitle>
           </div>
-          <CardDescription>Select a date range and optionally filter by faculty or skill.</CardDescription>
+          <CardDescription>Select a start and end date, then optionally filter by faculty or skill.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Date Range Picker */}
-            <div className="space-y-2 lg:col-span-1">
-              <Label>Date range</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {date?.from ? (
-                      date.to ? (
-                        `${format(date.from, "LLL dd, y")} - ${format(date.to, "LLL dd, y")}`
-                      ) : (
-                        format(date.from, "LLL dd, y")
-                      )
-                    ) : (
-                      <span>Pick a date range</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={date?.from}
-                    selected={date}
-                    onSelect={setDate}
-                    numberOfMonths={2}
-                  />
-                </PopoverContent>
-              </Popover>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+            <div className="space-y-2">
+              <Label htmlFor="start-date">Start date</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
             </div>
 
-            {/* Faculty Filter */}
+            <div className="space-y-2">
+              <Label htmlFor="end-date">End date</Label>
+              <Input
+                id="end-date"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="faculty-select">Faculty (Optional)</Label>
               <Select value={selectedFaculty} onValueChange={setSelectedFaculty} disabled={isInitialLoading}>
@@ -255,14 +237,11 @@ export default function FreeSlots() {
                   <SelectValue placeholder={isInitialLoading ? "Loading..." : "Any Faculty"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {faculties.map((faculty) => (
-                    <SelectItem key={faculty.id} value={faculty.id}>{faculty.name}</SelectItem>
-                  ))}
+                  {faculties.map((faculty) => <SelectItem key={faculty.id} value={faculty.id}>{faculty.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Skill Filter */}
             <div className="space-y-2">
               <Label htmlFor="skill-select">Skill (Optional)</Label>
               <Select value={selectedSkill} onValueChange={setSelectedSkill} disabled={isInitialLoading}>
@@ -270,9 +249,7 @@ export default function FreeSlots() {
                   <SelectValue placeholder={isInitialLoading ? "Loading..." : "Any Skill"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {skills.map((skill) => (
-                    <SelectItem key={skill.id} value={skill.id}>{skill.name}</SelectItem>
-                  ))}
+                  {skills.map((skill) => <SelectItem key={skill.id} value={skill.id}>{skill.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -287,7 +264,6 @@ export default function FreeSlots() {
         </CardContent>
       </Card>
 
-      {/* Results Section */}
       <div>
         <h2 className="text-2xl font-bold tracking-tight mb-4">Available Slots</h2>
         {renderResults()}

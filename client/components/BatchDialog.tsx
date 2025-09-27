@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { API_BASE_URL } from "@/lib/api";
+import { toast } from "sonner";
 import { 
   type Batch, 
   type BatchFormData, 
@@ -65,7 +66,7 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
         studentIds: [], daysOfWeek: [],
       });
     }
-  }, [batch, open]);
+  }, [batch]);
 
   useEffect(() => {
     const fetchSkillsData = async () => {
@@ -82,6 +83,15 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
     };
     if (open) fetchSkillsData();
   }, [open]);
+
+  useEffect(() => {
+    if (batch && skills.length > 0) {
+      const batchSkill = skills.find((skill) => skill.id === batch.skill?.id);
+      if (batchSkill) {
+        setFormData((prev) => ({ ...prev, skillId: batchSkill.id }));
+      }
+    }
+  }, [batch, skills]);
 
   const handleAddStudent = async () => {
     if (!newStudentName.trim() || !newStudentAdmissionNumber.trim()) return;
@@ -120,6 +130,10 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.skillId) {
+      toast.error("Please select a skill before saving.");
+      return;
+    }
     onSave(formData);
   };
   
@@ -183,7 +197,12 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
             </div>
             <div className="space-y-2">
               <Label htmlFor="skill">Skill/Subject</Label>
-              <Select value={formData.skillId} onValueChange={(value) => setFormData({ ...formData, skillId: value })} disabled={isLoading || !formData.facultyId || availableSkills.length === 0}>
+              <Select
+                value={formData.skillId}
+                onValueChange={(value) => setFormData({ ...formData, skillId: value })}
+                disabled={isLoading || !formData.facultyId || availableSkills.length === 0}
+                required
+              >
                 <SelectTrigger><SelectValue placeholder={isLoading ? "Loading skills..." : "Select skill"} /></SelectTrigger>
                 <SelectContent>{availableSkills.map((skill) => (<SelectItem key={skill.id} value={skill.id}>{skill.name}</SelectItem>))}</SelectContent>
               </Select>

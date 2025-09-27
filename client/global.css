@@ -1,3 +1,6 @@
+/* Calendar (react-day-picker) styles must be imported first */
+@import "react-day-picker/dist/style.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -54,6 +57,16 @@
     --sidebar-border: 220 13% 91%;
 
     --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    /* Calendar (react-day-picker) custom variables */
+    --rdp-cell-size: 40px;
+    --rdp-accent-color: hsl(var(--primary));
+    --rdp-background-color: hsl(var(--background));
+    --rdp-accent-color-dark: hsl(var(--primary));
+    --rdp-background-color-dark: hsl(var(--background));
+    --rdp-outline: 2px solid hsl(var(--primary));
+    --rdp-outline-selected: 3px solid hsl(var(--primary));
+    --rdp-border-radius: 0.5rem;
   }
 
   .dark {
@@ -102,5 +115,12 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* ADD THIS SNIPPET FOR CALENDAR HEADER FIX */
+  .rdp-head_cell {
+    width: var(--rdp-cell-size);
+    text-align: center;
+    font-weight: 500;
   }
 }

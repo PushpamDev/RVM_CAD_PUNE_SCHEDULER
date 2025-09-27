@@ -18,6 +18,7 @@ import { useBatchData } from '../hooks/useBatchData';
 import { BatchDialog } from '../components/BatchDialog';
 import { StudentListDialog } from '../components/StudentListDialog.tsx';
 import { AttendanceDialog } from "../components/AttendanceDialog";
+import { BatchTable } from "../components/BatchTable";
 import type { Batch, BatchFormData, Student } from '../types/batchManagement';
 
 // --- Helper Functions ---
@@ -64,7 +65,7 @@ const isFeePending = (remark: string): boolean => {
 
 export default function BatchManagement() {
   const { user, token } = useAuth();
-  const { batches, faculties, allStudents, loading, refetchData, refetchStudents } = useBatchData();
+  const { batches, faculties, allStudents, skills, loading, refetchData, refetchStudents } = useBatchData();
   
   // Dialog States
   const [isBatchDialogOpen, setIsBatchDialogOpen] = useState(false);
@@ -299,56 +300,16 @@ export default function BatchManagement() {
           </div>
         </CardHeader>
         <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Batch & Students</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Faculty</TableHead>
-                    <TableHead>Schedule & Duration</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-12 w-full" /></TableCell></TableRow>
-                    ))
-                  ) : paginatedBatches.length > 0 ? (
-                    paginatedBatches.map((batch) => (
-                      <TableRow key={batch.id}>
-                        <TableCell>
-                          <div className="font-medium">{batch.name}</div>
-                          <div className="text-sm text-muted-foreground">{batch.students.length} / {batch.max_students} Students</div>
-                        </TableCell>
-                        <TableCell><Badge variant={getStatusVariant(batch.status)} className="capitalize">{batch.status}</Badge></TableCell>
-                        <TableCell>{batch.faculty?.name || 'N/A'}</TableCell>
-                        <TableCell>
-                          <div>{`${batch.start_time} - ${batch.end_time}`}</div>
-                          <div className="text-sm text-muted-foreground">{`${formatDisplayDate(batch.start_date)} to ${formatDisplayDate(batch.end_date)}`}</div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                           <DropdownMenu>
-                              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handleViewStudents(batch)}><Users className="mr-2 h-4 w-4" />View Students</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleMarkAttendance(batch)}><UserCheck className="mr-2 h-4 w-4" />Mark Attendance</DropdownMenuItem>
-                                  {user?.role === 'admin' && <>
-                                      <DropdownMenuItem onClick={() => handleOpenEditDialog(batch)}><Edit className="mr-2 h-4 w-4" />Edit</DropdownMenuItem>
-                                      <DropdownMenuItem className="text-red-500" onClick={() => handleDeleteBatch(batch.id)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>
-                                  </>}
-                              </DropdownMenuContent>
-                           </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow><TableCell colSpan={5} className="text-center h-24">No batches found for the selected filters.</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+            <BatchTable
+                batches={paginatedBatches}
+                loading={loading}
+                filters={{ searchTerm, selectedDate, selectedFaculty, statusFilter }}
+                allStudents={allStudents}
+                onEditBatch={handleOpenEditDialog}
+                onDeleteBatch={handleDeleteBatch}
+                onUpdateRemarks={handleUpdateRemarks}
+                onAttendanceMarked={refetchData}
+            />
             {totalPages > 1 && (
               <div className="mt-4">
                 <Pagination>

@@ -61,6 +61,14 @@ const getDynamicBatchStatus = (startDateStr: string, endDateStr: string): "activ
   }
 };
 
+const getStudentsForListView = (batch: Batch): (Student & { isFeePending: boolean })[] => {
+  if (!batch || !batch.students) return [];
+  return batch.students.map(student => ({
+    ...student,
+    isFeePending: isFeePending(student.remarks),
+  }));
+};
+
 // --- Props Interface ---
 interface BatchTableProps {
   batches: Batch[];
@@ -79,7 +87,6 @@ export function BatchTable({ batches, loading, filters, allStudents, onEditBatch
     
     const [studentListBatch, setStudentListBatch] = useState<Batch | null>(null);
     const [attendanceBatch, setAttendanceBatch] = useState<Batch | null>(null);
-    const [studentsForAttendance, setStudentsForAttendance] = useState<Student[]>([]);
 
     const BATCHES_PER_PAGE = 10;
 
@@ -120,16 +127,7 @@ export function BatchTable({ batches, loading, filters, allStudents, onEditBatch
         if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
     }, [filters, currentPage, totalPages]);
 
-    const getStudentsForListView = (batch: Batch): Student[] => {
-        return batch.students.map(studentInBatch => {
-            const fullDetails = allStudents.find(s => s.id === studentInBatch.id);
-            return { ...studentInBatch, ...fullDetails };
-        }).filter(Boolean) as Student[];
-    };
-
     const handleMarkAttendanceClick = (batch: Batch) => {
-        const students = getStudentsForListView(batch);
-        setStudentsForAttendance(students);
         setAttendanceBatch(batch);
     };
 
@@ -200,26 +198,20 @@ export function BatchTable({ batches, loading, filters, allStudents, onEditBatch
                 batchName={studentListBatch.name}
                 students={getStudentsForListView(studentListBatch)}
                 onUpdateRemarks={onUpdateRemarks}
-            />
-        )}
-        
-        {attendanceBatch && (
-            <AttendanceDialog
-                open={!!attendanceBatch}
-                onOpenChange={(isOpen) => {
-                    if (!isOpen) {
-                        setAttendanceBatch(null);
-                    }
-                }}
-                batch={attendanceBatch}
-                students={studentsForAttendance}
-                onAttendanceMarked={() => {
-                    setAttendanceBatch(null);
-                    onAttendanceMarked();
-                }}
                 isFeePending={isFeePending}
             />
         )}
+
+        <AttendanceDialog
+            open={!!attendanceBatch}
+            onOpenChange={() => setAttendanceBatch(null)}
+            batch={attendanceBatch}
+            onAttendanceMarked={() => {
+                setAttendanceBatch(null);
+                onAttendanceMarked();
+            }}
+            isFeePending={isFeePending}
+        />
         </>
     );
 }

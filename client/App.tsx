@@ -20,6 +20,7 @@ import StudentManagement from "./pages/StudentManagement";
 import Suggestion from "./pages/Suggestion";
 import AttendanceManagement from "./pages/AttendanceManagement";
 import Announcements from "./pages/Announcements";
+import ScheduleView from "./pages/ScheduleView";
 
 const queryClient = new QueryClient();
 
@@ -28,7 +29,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -67,6 +68,10 @@ const App = () => (
             <Route
               path="/announcements"
               element={<ProtectedRoute requiredRole="admin"><Layout><Announcements /></Layout></ProtectedRoute>}
+            />
+            <Route
+              path="/schedule"
+              element={<ProtectedRoute><Layout><ScheduleView /></Layout></ProtectedRoute>}
             />
             <Route
               path="/free-slots"

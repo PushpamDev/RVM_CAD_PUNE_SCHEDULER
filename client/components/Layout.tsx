@@ -19,6 +19,8 @@ import {
   AvatarFallback, 
   AvatarImage 
 } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/AuthContext";
+import { useMemo } from "react";
 
 import { 
   Calendar, 
@@ -49,12 +51,14 @@ const navigation = [
   { name: "Suggestions", href: "/suggestions", icon: Users },
   { name: "Free Slots", href: "/free-slots", icon: Clock },
   { name: "Skills", href: "/skills", icon: BookOpen },
+  { name: "Schedule", href: "/schedule", icon: Calendar },
 ];
 
 // --- SIDEBAR COMPONENT ---
 const SidebarContent = ({ onLinkClick }: { onLinkClick?: () => void }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -62,19 +66,28 @@ const SidebarContent = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     navigate("/login");
   };
   
+  const filteredNavigation = useMemo(() => {
+    if (user?.role === 'faculty') {
+      return navigation.filter(item =>
+        ["Dashboard", "Batch Management", "Free Slots", "Attendance", "Schedule"].includes(item.name)
+      );
+    }
+    return navigation;
+  }, [user]);
+  
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
       <div className="flex h-16 items-center border-b px-6">
         <Link to="/" className="flex items-center gap-2 font-semibold" onClick={onLinkClick}>
-          <Calendar className="h-6 w-6 text-primary" />
-          <span className="">RVM CAD</span>
+          <img src="/logo.png" alt="RVM CAD Logo" className="h-8 w-auto" />
+          <span className="hidden sm:inline-block">RVM CAD</span>
         </Link>
       </div>
       
       {/* Main Navigation */}
       <nav className="flex-1 space-y-2 p-4">
-        {navigation.map((item) => {
+        {filteredNavigation.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.href;
           return (
