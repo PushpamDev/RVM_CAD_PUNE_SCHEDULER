@@ -208,7 +208,7 @@ export default function ScheduleView() {
                                                     <PopoverTrigger asChild>
                                                         <Badge variant="outline" className={cn("text-xs w-full block truncate text-left p-2 h-auto font-normal cursor-pointer border-2", getConsistentColor(batch.id))}>
                                                             <p className="font-semibold">{batch.name}</p>
-                                                            <p className="opacity-80">{batch.skill.name}</p>
+                                                            <p className="opacity-80">{batch.skill?.name ?? 'N/A'}</p>
                                                         </Badge>
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-64">
@@ -217,7 +217,7 @@ export default function ScheduleView() {
                                                             <p className="text-sm text-muted-foreground">{formatTime(batch.start_time)} - {formatTime(batch.end_time)}</p>
                                                             <div className="flex items-center pt-2">
                                                                 <BookOpen className="mr-2 h-4 w-4 opacity-70" />
-                                                                <span className="text-xs text-muted-foreground">{batch.skill.name}</span>
+                                                                <span className="text-xs text-muted-foreground">{batch.skill?.name ?? 'N/A'}</span>
                                                             </div>
                                                             <div className="flex items-center">
                                                                 <Users className="mr-2 h-4 w-4 opacity-70" />
@@ -253,7 +253,7 @@ export default function ScheduleView() {
                                     <div className={cn("flex items-center justify-between p-4 rounded-lg border-l-4 cursor-pointer", getConsistentColor(batch.id))}>
                                         <div>
                                             <p className="font-bold">{batch.name}</p>
-                                            <p className="text-sm">{batch.skill.name}</p>
+                                            <p className="text-sm">{batch.skill?.name ?? 'N/A'}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="font-semibold text-sm">{formatTime(batch.start_time)} - {formatTime(batch.end_time)}</p>
@@ -268,7 +268,7 @@ export default function ScheduleView() {
                                         <p className="text-sm text-muted-foreground">{formatTime(batch.start_time)} - {formatTime(batch.end_time)}</p>
                                         <div className="flex items-center pt-2">
                                             <BookOpen className="mr-2 h-4 w-4 opacity-70" />
-                                            <span className="text-xs text-muted-foreground">{batch.skill.name}</span>
+                                            <span className="text-xs text-muted-foreground">{batch.skill?.name ?? 'N/A'}</span>
                                         </div>
                                         <div className="flex items-center">
                                             <Users className="mr-2 h-4 w-4 opacity-70" />
