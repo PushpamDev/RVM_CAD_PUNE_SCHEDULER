@@ -7,13 +7,13 @@ import {
   Clock, 
   ArrowRight,
   Activity,
-  CalendarRange, // New icon for date range
-  ArrowUpRight // New icon for trend
+  CalendarRange,
+  ArrowUpRight,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Table, 
   TableBody, 
@@ -22,54 +22,39 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { API_BASE_URL } from "@/lib/api";
 import { useAuth } from "../hooks/AuthContext";
 import { DashboardSkeleton } from "./skeleton";
-import { BatchStatusDonutChart } from "@/components/charts/BatchStatusDonutChart"; // New chart component
+import { BatchStatusDonutChart } from "@/components/charts/BatchStatusDonutChart";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, subDays, addDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { DateRange } from "react-day-picker";
-import { Calendar as DatePickerCalendar } from "@/components/ui/calendar"; // Assuming shadcn Calendar component
+import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
+
+import {
+    fetchFaculties,
+    fetchAllBatches,
+    fetchAllStudents,
+    fetchOverallAttendanceReport,
+    fetchFacultyAttendanceReport,
+    fetchAdminActiveStudentsCount,
+    fetchFacultyActiveStudents,
+    fetchFacultyStudentCount, // Import the new function
+    Faculty,
+    Batch,
+    Student,
+    FacultyActiveStudents
+} from '@/lib/services/api';
 
 // --- Interfaces ---
-interface Faculty {
-  id: string;
-  name: string;
-}
-
-interface Batch {
-  id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-  students: any[];
-  faculty: {
-    id: string;
-    name: string;
-  }
-  faculty_id?: string;
-  derivedStatus?: 'upcoming' | 'active' | 'completed';
-}
-
-interface Skill {
-  id: string;
-  name: string;
-}
-
-interface Student {
-  id: string;
-  name: string;
-}
-
 interface StatCardProps {
   title: string;
   value: string | number;
   icon: React.ComponentType<any>;
-  colorClass: string; // Changed to colorClass for tailwind utility
-  to: string; // Added 'to' for clickable cards
-  trend?: string; // Optional trend indicator
+  colorClass: string;
+  to: string;
+  trend?: string;
 }
 
 // --- Helper Functions ---
@@ -88,9 +73,7 @@ const getStatus = (startDateStr: string, endDateStr: string): 'upcoming' | 'acti
   return "completed";
 };
 
-// --- Sub-components ---
-
-// MODIFIED: StatCard for clickable behavior and enhanced UI
+// --- Sub-components (Unchanged) ---
 function StatCard({ title, value, icon: Icon, colorClass, to, trend }: StatCardProps) {
   return (
     <Link to={to}>
@@ -115,27 +98,65 @@ function StatCard({ title, value, icon: Icon, colorClass, to, trend }: StatCardP
   );
 }
 
-function FacultyUtilization({ faculties, batches }: { faculties: Faculty[], batches: Batch[] }) {
-    const facultyStats = faculties.map(faculty => {
-        const facultyBatches = batches.filter(batch => batch.faculty_id === faculty.id);
-        const activeBatches = facultyBatches.filter(batch => batch.derivedStatus === 'active');
-        const activeBatchesCount = activeBatches.length;
-        const studentCount = activeBatches.reduce((acc, batch) => acc + (batch.students?.length || 0), 0);
+function FacultyUtilization({ faculties, batches, token }: { faculties: Faculty[], batches: Batch[], token: string | null }) {
+    const [facultyStats, setFacultyStats] = useState<any[]>([]);
 
-        let status: 'Idle' | 'Optimal' | 'High' = 'Idle';
-        if (activeBatchesCount > 0 && activeBatchesCount <= 2) {
-            status = 'Optimal';
-        } else if (activeBatchesCount > 2) {
-            status = 'High';
-        }
+    useEffect(() => {
+        const fetchStats = async () => {
+            
+            // 1. Fetch active student data for ALL faculties at once
+            let activeStudentsData: FacultyActiveStudents[] = [];
+            try {
+                // We can reuse the function from the faculty dashboard
+                activeStudentsData = await fetchFacultyActiveStudents(token); 
+            } catch (error) {
+                console.error("Failed to fetch faculty active students list", error);
+            }
 
-        return {
-            name: faculty.name,
-            activeBatches: activeBatchesCount,
-            totalStudents: studentCount,
-            status: status,
+            // 2. Create a lookup map for easy and fast access
+            const activeStudentsMap = new Map(
+                activeStudentsData.map(item => [item.faculty_id, item.active_students])
+            );
+
+            // 3. Process each faculty to get the rest of the data
+            const stats = await Promise.all(faculties.map(async (faculty) => {
+                const facultyBatches = batches.filter(batch => batch.faculty_id === faculty.id);
+                const activeBatches = facultyBatches.filter(batch => getStatus(batch.start_date, batch.end_date) === 'active');
+                const activeBatchesCount = activeBatches.length;
+
+                // Get total student count (as before)
+                let studentCount = 0;
+                try {
+                    const studentData = await fetchFacultyStudentCount(token, faculty.id);
+                    studentCount = studentData.total_students; 
+                } catch (error) {
+                    console.error(`Failed to fetch student count for faculty ${faculty.id}`, error);
+                }
+
+                // 4. Get active student count from our map
+                const activeStudentCount = activeStudentsMap.get(faculty.id) || 0;
+
+                let status: 'Idle' | 'Optimal' | 'High' = 'Idle';
+                if (activeBatchesCount > 0 && activeBatchesCount <= 2) status = 'Optimal';
+                else if (activeBatchesCount > 2) status = 'High';
+
+                // 5. Return all data points for the state
+                return { 
+                    name: faculty.name, 
+                    activeBatches: activeBatchesCount, 
+                    activeStudents: activeStudentCount, // <-- NEW DATA
+                    totalStudents: studentCount, 
+                    status 
+                };
+            }));
+            
+            setFacultyStats(stats.sort((a, b) => b.totalStudents - a.totalStudents));
         };
-    }).sort((a, b) => b.totalStudents - a.totalStudents);
+
+        if (token) {
+            fetchStats();
+        }
+    }, [faculties, batches, token]);
 
     const getStatusBadge = (status: 'Idle' | 'Optimal' | 'High') => {
         switch (status) {
@@ -147,17 +168,15 @@ function FacultyUtilization({ faculties, batches }: { faculties: Faculty[], batc
 
     return (
         <Card>
-            <CardHeader>
-                <CardTitle>Faculty Utilization</CardTitle>
-                <CardDescription>An overview of each faculty's current workload.</CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle>Faculty Utilization</CardTitle><CardDescription>An overview of each faculty's current workload.</CardDescription></CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead>Faculty</TableHead>
-                            <TableHead className="text-center">Active</TableHead>
-                            <TableHead className="text-right">Students</TableHead>
+                            <TableHead className="text-center">Active Batches</TableHead>
+                            <TableHead className="text-center">Active Students</TableHead> {/* <-- NEW COLUMN */}
+                            <TableHead className="text-right">Total Students</TableHead>
                             <TableHead className="text-right">Status</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -166,6 +185,7 @@ function FacultyUtilization({ faculties, batches }: { faculties: Faculty[], batc
                             <TableRow key={faculty.name}>
                                 <TableCell className="font-medium">{faculty.name}</TableCell>
                                 <TableCell className="text-center">{faculty.activeBatches}</TableCell>
+                                <TableCell className="text-center">{faculty.activeStudents}</TableCell> {/* <-- NEW CELL */}
                                 <TableCell className="text-right">{faculty.totalStudents}</TableCell>
                                 <TableCell className="text-right">{getStatusBadge(faculty.status)}</TableCell>
                             </TableRow>
@@ -180,13 +200,10 @@ function FacultyUtilization({ faculties, batches }: { faculties: Faculty[], batc
 function QuickActions() {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Quick Actions</CardTitle>
-        <CardDescription>Common tasks and shortcuts</CardDescription>
-      </CardHeader>
+      <CardHeader><CardTitle>Quick Actions</CardTitle><CardDescription>Common tasks and shortcuts</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
-        <Link to="/faculty"><Button variant="outline" className="w-full justify-start"><Users className="h-4 w-4 mr-2" />Add New Faculty<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
-        <Link to="/batches"><Button variant="outline" className="w-full justify-start"><Calendar className="h-4 w-4 mr-2" />Create New Batch<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
+        <Link to="/faculty-management"><Button variant="outline" className="w-full justify-start"><Users className="h-4 w-4 mr-2" />Add New Faculty<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
+        <Link to="/batch-management"><Button variant="outline" className="w-full justify-start"><Calendar className="h-4 w-4 mr-2" />Create New Batch<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
         <Link to="/skills"><Button variant="outline" className="w-full justify-start"><BookOpen className="h-4 w-4 mr-2" />Manage Skills<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
       </CardContent>
     </Card>
@@ -199,7 +216,6 @@ function RecentBatches({ batches }: { batches: Batch[] }) {
       case "active": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
       case "upcoming": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
       case "completed": return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300";
-      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300";
     }
   };
 
@@ -211,7 +227,7 @@ function RecentBatches({ batches }: { batches: Batch[] }) {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {batches.slice(0, 3).map((batch) => (
+          {(batches || []).slice(0, 3).map((batch) => (
             <div key={batch.id} className="flex items-center justify-between p-3 border rounded-lg">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Calendar className="h-5 w-5 text-primary" /></div>
@@ -222,7 +238,7 @@ function RecentBatches({ batches }: { batches: Batch[] }) {
               </div>
               <div className="text-right space-y-1">
                 <Badge className={getStatusColor(batch.derivedStatus || 'upcoming')}>{batch.derivedStatus}</Badge>
-                <div className="text-xs text-muted-foreground">{batch.students.length} students</div>
+                <div className="text-xs text-muted-foreground">{batch.students?.length || 0} students</div>
               </div>
             </div>
           ))}
@@ -233,13 +249,10 @@ function RecentBatches({ batches }: { batches: Batch[] }) {
 }
 
 function UpcomingSchedule({ batches }: { batches: Batch[] }) {
-  const upcomingBatches = batches.filter((batch) => batch.derivedStatus === "upcoming");
+  const upcomingBatches = (batches || []).filter((batch) => batch.derivedStatus === "upcoming");
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Upcoming Schedule</CardTitle>
-        <CardDescription>Next scheduled classes and sessions</CardDescription>
-      </CardHeader>
+      <CardHeader><CardTitle>Upcoming Schedule</CardTitle><CardDescription>Next scheduled classes and sessions</CardDescription></CardHeader>
       <CardContent>
         <div className="space-y-3">
           {upcomingBatches.length > 0 ? upcomingBatches.slice(0, 4).map((item) => (
@@ -250,8 +263,8 @@ function UpcomingSchedule({ batches }: { batches: Batch[] }) {
                 <div className="text-sm text-muted-foreground">{item.faculty?.name || 'N/A'}</div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-medium">{item.start_date}</div>
-                <div className="text-xs text-muted-foreground">{item.students.length} students</div>
+                <div className="text-sm font-medium">{format(new Date(item.start_date), "dd MMM, yyyy")}</div>
+                <div className="text-xs text-muted-foreground">{item.students?.length || 0} students</div>
               </div>
             </div>
           )) : <p className="text-sm text-muted-foreground">No upcoming batches scheduled.</p>}
@@ -266,69 +279,87 @@ function UpcomingSchedule({ batches }: { batches: Batch[] }) {
 export default function Index() {
   const [rawFaculties, setRawFaculties] = useState<Faculty[]>([]);
   const [rawBatches, setRawBatches] = useState<Batch[]>([]);
-  const [rawSkills, setRawSkills] = useState<Skill[]>([]);
-  const [rawStudents, setRawStudents] = useState<Student[]>([]);
+  const [totalStudentsCount, setTotalStudentsCount] = useState(0);
+  const [attendancePercentage, setAttendancePercentage] = useState<number | null>(null);
+  const [activeStudentsCount, setActiveStudentsCount] = useState(0);
+  
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const { user, token } = useAuth();
 
-  // NEW: Date Range State for Dashboard-wide filtering
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 30),
-    to: addDays(new Date(), 30),
-  });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: subDays(new Date(), 30), to: new Date() });
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
-  const fetchData = async () => {
-    if (!token || !user) return;
-    setLoading(true); // Set loading true on every fetch
-    try {
-      const headers = { 'Authorization': `Bearer ${token}` };
-      const [facultyRes, batchesRes, skillsRes, studentsRes] =
-        await Promise.all([
-          fetch(`${API_BASE_URL}/api/faculty`, { headers }),
-          fetch(`${API_BASE_URL}/api/batches`, { headers }),
-          fetch(`${API_BASE_URL}/api/skills`, { headers }),
-          fetch(`${API_BASE_URL}/api/students`, { headers }),
-        ]);
-
-      const facultyData = await facultyRes.json();
-      const batchesData = await batchesRes.json();
-      const skillsData = await skillsRes.json();
-      const studentsData = await studentsRes.json();
-
-      setRawFaculties(Array.isArray(facultyData) ? facultyData : []);
-      setRawBatches(Array.isArray(batchesData) ? batchesData : []);
-      setRawSkills(Array.isArray(skillsData) ? skillsData : []);
-      setRawStudents(studentsData.students || []);
-
-    } catch (error) {
-      console.error("Failed to fetch dashboard data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (user && token) {
-      fetchData();
+    if (!user || !token) {
+        setLoading(false);
+        return;
     }
+
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const basePromises = [ fetchFaculties(token), fetchAllBatches(token) ];
+        
+        const roleSpecificPromises = user.role === 'faculty' 
+            ? [ 
+                fetchFacultyAttendanceReport(token, user.id), 
+                fetchFacultyActiveStudents(token),
+                fetchFacultyStudentCount(token, user.id) // For total students of faculty
+              ] 
+            : [ 
+                fetchOverallAttendanceReport(token), 
+                fetchAdminActiveStudentsCount(token),
+                fetchAllStudents(token) // For total students for admin
+              ];
+
+        const [ facultyData, batchesData, attendanceData, activeStudentsData, studentCountResult ] = await Promise.all([...basePromises, ...roleSpecificPromises]);
+
+        setRawFaculties(facultyData || []);
+        setRawBatches(batchesData || []);
+
+        if (user.role === 'faculty') {
+            const facultyAttendance = attendanceData as Awaited<ReturnType<typeof fetchFacultyAttendanceReport>>;
+            setAttendancePercentage(facultyAttendance?.faculty_attendance_percentage ?? null);
+            
+            const facultyActiveStudents = activeStudentsData as FacultyActiveStudents[];
+            setActiveStudentsCount(facultyActiveStudents?.find(f => f.faculty_id === user.id)?.active_students || 0);
+            
+            const facultyStudentCount = studentCountResult as { total_students: number };
+            setTotalStudentsCount(facultyStudentCount?.total_students || 0);
+        } else {
+            const overallAttendance = attendanceData as Awaited<ReturnType<typeof fetchOverallAttendanceReport>>;
+            setAttendancePercentage(overallAttendance?.overall_attendance_percentage ?? null);
+            
+            const adminActiveStudents = activeStudentsData as { total_active_students: number };
+            setActiveStudentsCount(adminActiveStudents?.total_active_students || 0);
+
+            const allStudents = studentCountResult as { count: number };
+            setTotalStudentsCount(allStudents?.count || 0);
+        }
+      } catch (err) {
+        console.error("Failed to fetch dashboard data:", err);
+        setError("Could not load dashboard data. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, [user, token]);
 
-  // NEW: Memoized hook to process and filter batches based on date range
   const processedBatches = useMemo(() => {
-    return rawBatches.filter(batch => {
-      if (!dateRange?.from || !dateRange?.to) return true; // No filter if no range selected
-      const batchStart = new Date(batch.start_date);
-      const batchEnd = new Date(batch.end_date);
-      
-      // Filter batches that are active or upcoming within the date range
-      return (
-        (batchStart <= dateRange.to && batchEnd >= dateRange.from)
-      );
-    }).map(batch => ({
+    return (rawBatches || []).map(batch => ({
       ...batch,
       derivedStatus: getStatus(batch.start_date, batch.end_date),
-    }));
+    })).filter(batch => {
+      if (!dateRange?.from || !dateRange?.to) return true;
+      const batchStart = new Date(batch.start_date);
+      const batchEnd = new Date(batch.end_date);
+      return batchStart <= dateRange.to && batchEnd >= dateRange.from;
+    });
   }, [rawBatches, dateRange]);
 
   const dashboardBatches = useMemo(() => {
@@ -342,29 +373,22 @@ export default function Index() {
     const activeBatchesCount = dashboardBatches.filter(b => b.derivedStatus === 'active').length;
     const upcomingBatchesCount = dashboardBatches.filter(b => b.derivedStatus === 'upcoming').length;
     const completedBatchesCount = dashboardBatches.filter(b => b.derivedStatus === 'completed').length;
-    
-    const studentCount = user?.role === 'faculty'
-      ? dashboardBatches.reduce((acc, batch) => acc + (batch.students?.length || 0), 0)
-      : rawStudents.length;
-
-    // Data for the Donut Chart
-    const batchStatusChartData = [
-      { name: 'active', value: activeBatchesCount },
-      { name: 'upcoming', value: upcomingBatchesCount },
-      { name: 'completed', value: completedBatchesCount },
-    ];
-
-    return {
-      totalFaculty: rawFaculties.length,
-      activeBatches: activeBatchesCount,
-      totalSkills: rawSkills.length,
-      totalStudents: studentCount,
-      batchStatusChartData,
-    };
-  }, [dashboardBatches, rawFaculties, rawSkills, rawStudents, user]);
+    const batchStatusChartData = [ { name: "active", value: activeBatchesCount }, { name: "upcoming", value: upcomingBatchesCount }, { name: "completed", value: completedBatchesCount } ];
+    return { totalFaculty: rawFaculties.length, activeBatches: activeBatchesCount, totalStudents: totalStudentsCount, activeStudents: activeStudentsCount, batchStatusChartData, attendancePercentage };
+  }, [dashboardBatches, rawFaculties, totalStudentsCount, attendancePercentage, activeStudentsCount]);
 
   if (loading) {
-    return <DashboardSkeleton />; // Render skeleton during loading
+    return <DashboardSkeleton />;
+  }
+
+  if (error) {
+    return (
+        <div className="flex flex-col items-center justify-center h-96 text-center">
+            <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
+            <h2 className="text-2xl font-semibold mb-2">Oops! Something went wrong.</h2>
+            <p className="text-muted-foreground">{error}</p>
+        </div>
+    );
   }
 
   return (
@@ -372,91 +396,54 @@ export default function Index() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-4xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground text-lg">Welcome, {user?.name || 'User'}. Here's an overview of your institute.</p>
+          <p className="text-muted-foreground text-lg">Welcome back, {user?.name || 'User'}. Here's what's happening.</p>
         </div>
-        {/* Date Range Picker */}
         <div className="flex items-center space-x-2">
-            <CalendarRange className="h-5 w-5 text-muted-foreground" />
             <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
-                    <Button
-                        id="date"
-                        variant={"outline"}
-                        className={cn(
-                            "w-[240px] justify-start text-left font-normal",
-                            !dateRange && "text-muted-foreground"
-                        )}
-                    >
+                    <Button id="date" variant={"outline"} className={cn("w-[260px] justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateRange?.from ? (
-                            dateRange.to ? (
-                                <>
-                                    {format(dateRange.from, "LLL dd, y")} -{" "}
-                                    {format(dateRange.to, "LLL dd, y")}
-                                </>
-                            ) : (
-                                format(dateRange.from, "LLL dd, y")
-                            )
-                        ) : (
-                            <span>Pick a date range</span>
-                        )}
+                        {/* --- THIS IS THE FIX --- */}
+                        {dateRange?.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="end">
-                    <DatePickerCalendar
-                        initialFocus
-                        mode="range"
-                        defaultMonth={dateRange?.from}
-                        selected={dateRange}
-                        onSelect={setDateRange}
-                        numberOfMonths={2}
-                    />
+                    <DatePickerCalendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/>
                      <div className="p-2 border-t flex justify-end gap-2">
-                        <Button variant="ghost" onClick={() => {
-                            setDateRange({ from: subDays(new Date(), 30), to: new Date() });
-                            setIsDatePickerOpen(false);
-                        }}>Last 30 Days</Button>
-                        <Button variant="ghost" onClick={() => {
-                            setDateRange({ from: subDays(new Date(), 7), to: new Date() });
-                            setIsDatePickerOpen(false);
-                        }}>Last 7 Days</Button>
-                        <Button onClick={() => setIsDatePickerOpen(false)}>Apply</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setDateRange({ from: subDays(new Date(), 30), to: new Date() }); setIsDatePickerOpen(false); }}>Last 30 Days</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setDateRange({ from: subDays(new Date(), 7), to: new Date() }); setIsDatePickerOpen(false); }}>Last 7 Days</Button>
+                        <Button size="sm" onClick={() => setIsDatePickerOpen(false)}>Apply</Button>
                      </div>
                 </PopoverContent>
             </Popover>
         </div>
       </div>
 
-      <div className={`grid gap-4 md:grid-cols-2 ${user?.role === 'admin' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
-        {user?.role === 'admin' && <StatCard title="Total Faculty" value={dashboardStats.totalFaculty} icon={Users} colorClass="text-blue-600" to="/faculty" trend="+2 last month" />}
-        <StatCard title="Active Batches" value={dashboardStats.activeBatches} icon={Calendar} colorClass="text-green-600" to="/batches?status=active" trend="+5 from last week" />
-        <StatCard title="Total Skills" value={dashboardStats.totalSkills} icon={BookOpen} colorClass="text-purple-600" to="/skills" trend="+1 new skill" />
-        <StatCard title={user?.role === 'faculty' ? "Your Students" : "Total Students"} value={dashboardStats.totalStudents} icon={Users} colorClass="text-orange-600" to="/students" trend="+10 enrollments" />
+      <div className={`grid gap-4 md:grid-cols-2 ${user?.role === "admin" ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+        {user?.role === "admin" && (
+          <StatCard title="Total Faculty" value={dashboardStats.totalFaculty} icon={Users} colorClass="text-blue-600" to="/faculty-management" trend="+2 last month" />
+        )}
+        <StatCard title="Active Batches" value={dashboardStats.activeBatches} icon={Calendar} colorClass="text-green-600" to="/batch-management?status=active" trend="+5 from last week" />
+        <StatCard title={user?.role === "faculty" ? "Your Attendance" : "Overall Attendance"} value={`${dashboardStats.attendancePercentage ? dashboardStats.attendancePercentage.toFixed(1) : "N/A"}%`} icon={Activity} colorClass="text-purple-600" to="/faculty-attendance-report" trend="Updated daily" />
+        <StatCard title={user?.role === "faculty" ? "Your Active Students" : "Active Students"} value={dashboardStats.activeStudents} icon={Users} colorClass="text-sky-600" to="/student-management?status=active" trend="In ongoing batches" />
+        <StatCard title={user?.role === "faculty" ? "Your Total Students" : "Total Students"} value={dashboardStats.totalStudents} icon={Users} colorClass="text-orange-600" to="/student-management" trend="+10 enrollments" />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
+      {/* This is the new, more balanced grid layout */}
+      <div className="grid gap-6 lg:grid-cols-5">
+        {/* Main content area, takes up 3 of 5 columns */}
+        <div className="lg:col-span-3 space-y-6">
           <RecentBatches batches={dashboardBatches} />
-          {/* NEW: Batch Status Donut Chart */}
-          <BatchStatusDonutChart data={dashboardStats.batchStatusChartData} /> 
-
-          <Tabs defaultValue="schedule" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="schedule">Upcoming Schedule</TabsTrigger>
-              <TabsTrigger value="activity">Recent Activity</TabsTrigger>
-            </TabsList>
-            <TabsContent value="schedule">
-              <UpcomingSchedule batches={dashboardBatches} />
-            </TabsContent>
-            <TabsContent value="activity">
-                <Card><CardHeader><CardTitle>Recent Activity</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Activity feed is under development.</p></CardContent></Card>
-            </TabsContent>
-          </Tabs>
+          {user?.role === "admin" && (
+            <FacultyUtilization faculties={rawFaculties} batches={processedBatches} token={token} />
+          )}
         </div>
 
-        <div className="space-y-6">
-          <QuickActions />
-          {user?.role === 'admin' && <FacultyUtilization faculties={rawFaculties} batches={processedBatches} />}
+        {/* Sidebar area, takes up 2 of 5 columns */}
+        <div className="lg:col-span-2 space-y-6">
+          <BatchStatusDonutChart data={dashboardStats.batchStatusChartData} />
+          <UpcomingSchedule batches={dashboardBatches} />
+          {user?.role === "admin" && <QuickActions />}
         </div>
       </div>
     </div>

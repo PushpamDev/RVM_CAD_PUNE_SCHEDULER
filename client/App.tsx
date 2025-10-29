@@ -21,6 +21,8 @@ import Suggestion from "./pages/Suggestion";
 import AttendanceManagement from "./pages/AttendanceManagement";
 import Announcements from "./pages/Announcements";
 import ScheduleView from "./pages/ScheduleView";
+import TicketManagement from "./pages/TicketManagement";
+import FacultyAttendanceReport from "./pages/FacultyAttendanceReport";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +74,14 @@ const App = () => (
             <Route
               path="/schedule"
               element={<ProtectedRoute><Layout><ScheduleView /></Layout></ProtectedRoute>}
+            />
+            <Route
+              path="/tickets"
+              element={<ProtectedRoute><Layout><TicketManagement /></Layout></ProtectedRoute>}
+            />
+            <Route
+              path="/faculty-attendance-report"
+              element={<ProtectedRoute requiredRole="admin"><Layout><FacultyAttendanceReport /></Layout></ProtectedRoute>}
             />
             <Route
               path="/free-slots"

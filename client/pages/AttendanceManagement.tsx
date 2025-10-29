@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   Card,
@@ -24,59 +24,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAuth } from "../hooks/AuthContext";
-import { API_BASE_URL } from "@/lib/api";
-import { toast } from "@/components/ui/use-toast";
-import { Users, CalendarCheck, TrendingUp, TrendingDown, Activity, BadgePercent, Check, X, Calendar as CalendarIcon } from "lucide-react";
-import { addDays, format } from "date-fns";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  TrendingUp,
+  TrendingDown,
+  BadgePercent,
+  Check,
+  X,
+  Calendar as CalendarIcon,
+  FileSearch,
+  Activity,
+  CalendarCheck,
+} from "lucide-react";
+import { format } from "date-fns";
+import { useAttendanceReport } from "../hooks/useAttendanceReport";
+import { motion, AnimatePresence } from "framer-motion";
 
-// --- Type Definitions ---
-interface Faculty {
-  id: string;
-  name: string;
-}
-
-interface Batch {
-  id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-  faculty_id: string;
-}
-
-interface Student {
-  id: string;
-  name: string;
-}
-
-interface AttendanceRecord {
-  student_id: string;
-  is_present: boolean;
-}
-
-interface ReportApiResponse {
-  students: Student[];
-  attendance_by_date: Record<string, AttendanceRecord[]>;
-}
-
-interface ProcessedReport {
-  dates: string[];
-  studentRows: {
-    id: string;
-    name: string;
-    daily_statuses: { status: 'present' | 'absent' | 'no_class' }[];
-    percentage: number;
-  }[];
-  summary: {
-    overall_percentage: number;
-    total_classes: number;
-    top_performer?: { name: string; percentage: number };
-    low_performer?: { name: string; percentage: number };
-  };
-}
-
-// --- Sub-components for the Report ---
-
+// --- Sub-components ---
 const ReportSummaryCard = ({ title, value, icon: Icon, color = "text-primary" }) => (
   <Card>
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -84,35 +48,53 @@ const ReportSummaryCard = ({ title, value, icon: Icon, color = "text-primary" })
       <Icon className={`h-4 w-4 text-muted-foreground ${color}`} />
     </CardHeader>
     <CardContent>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-2xl font-bold truncate" title={String(value)}>
+        {value}
+      </div>
     </CardContent>
   </Card>
 );
 
-const AttendanceGrid = ({ report }: { report: ProcessedReport }) => (
-  <div className="rounded-md border mt-6 overflow-x-auto">
+const AttendanceGrid = ({ report }) => (
+  <div className="rounded-md border mt-6 overflow-x-auto relative">
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[200px] sticky left-0 bg-background z-10">Student</TableHead>
+          <TableHead className="w-[150px] sm:w-[200px] sticky left-0 bg-background/95 backdrop-blur-sm z-10">
+            Student
+          </TableHead>
           {report.dates.map((date) => (
-            <TableHead key={date} className="text-center min-w-[60px]">{format(new Date(date), "dd/MM")}</TableHead>
+            <TableHead key={date} className="text-center min-w-[60px]">
+              {format(new Date(date), "dd/MM")}
+            </TableHead>
           ))}
-          <TableHead className="text-right sticky right-0 bg-background z-10">Attendance %</TableHead>
+          <TableHead className="text-right sticky right-0 bg-background/95 backdrop-blur-sm z-10">
+            Attendance %
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {report.studentRows.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell className="font-medium sticky left-0 bg-background z-10">{row.name}</TableCell>
+        {report.studentRows.map((row, rowIndex) => (
+          <TableRow key={row.id} className={rowIndex % 2 === 0 ? "bg-muted/50" : ""}>
+            <TableCell className="font-medium sticky left-0 bg-inherit z-10">
+              {row.name}
+            </TableCell>
             {row.daily_statuses.map((day, index) => (
-              <TableCell key={index} className="text-center">
-                {day.status === 'present' && <Check className="h-5 w-5 text-green-500 mx-auto" />}
-                {day.status === 'absent' && <X className="h-5 w-5 text-red-500 mx-auto" />}
-                {day.status === 'no_class' && <span className="text-muted-foreground">-</span>}
+              <TableCell key={index} className="text-center p-2">
+                {day.status === "present" && (
+                  <Check className="h-5 w-5 text-green-500 mx-auto" />
+                )}
+                {day.status === "absent" && (
+                  <X className="h-5 w-5 text-red-500 mx-auto" />
+                )}
+                {day.status === "no_class" && (
+                  <span className="text-muted-foreground">-</span>
+                )}
               </TableCell>
             ))}
-            <TableCell className="text-right font-bold sticky right-0 bg-background z-10">{row.percentage}%</TableCell>
+            <TableCell className="text-right font-bold sticky right-0 bg-inherit z-10">
+              {row.percentage}%
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -120,233 +102,283 @@ const AttendanceGrid = ({ report }: { report: ProcessedReport }) => (
   </div>
 );
 
+const ReportPlaceholder = ({ title, description }) => (
+  <Card className="flex items-center justify-center h-96 border-dashed">
+    <div className="text-center p-4">
+      <div className="flex justify-center mb-4">
+        <div className="p-4 bg-muted rounded-full">
+          <FileSearch className="h-8 w-8 text-muted-foreground" />
+        </div>
+      </div>
+      <CardTitle className="mb-2">{title}</CardTitle>
+      <CardDescription>{description}</CardDescription>
+    </div>
+  </Card>
+);
+
 // --- Main Component ---
-
 const AttendanceManagement = () => {
-  const { token, user } = useAuth();
-  const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
-  const [selectedFaculty, setSelectedFaculty] = useState<string | null>(null);
-  const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
-  const [reportData, setReportData] = useState<ReportApiResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [reportGenerated, setReportGenerated] = useState(false);
+  const {
+    faculties,
+    activeBatches: batches, // Renamed for clarity, assuming hook provides all batches for the user
+    selectedFacultyId,
+    selectedBatchId,
+    dateRange,
+    processedReport,
+    isReportGenerated,
+    userRole,
+    isLoading,
+    isGeneratingReport,
+    handleFacultySelect,
+    handleBatchSelect,
+    setDateRange,
+    generateReport,
+  } = useAttendanceReport();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!token || !user) return;
-      try {
-        const [batchesRes, facultiesRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/batches`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`${API_BASE_URL}/api/faculty`, { headers: { Authorization: `Bearer ${token}` } })
-        ]);
-        const batchesData = await batchesRes.json();
-        const facultiesData = await facultiesRes.json();
-        
-        const allBatches = Array.isArray(batchesData) ? batchesData : [];
-        const allFaculties = Array.isArray(facultiesData) ? facultiesData : [];
+  const [batchStatusFilter, setBatchStatusFilter] = useState("active");
 
-        setBatches(allBatches);
-        
-        if (user.role === 'faculty') {
-          const facultyId = user.id;
-          const currentFaculty = allFaculties.find(f => f.id === facultyId);
-          setFaculties(currentFaculty ? [currentFaculty] : []);
-          setSelectedFaculty(facultyId);
-        } else { // for admin
-          setFaculties(allFaculties);
-        }
-
-      } catch (error) {
-        console.error("Failed to fetch initial data", error);
-      }
-    };
-    fetchData();
-  }, [token, user]);
-
-  // NEW: Memoized list of active batches for the selected faculty
-  const activeBatchesForSelectedFaculty = useMemo(() => {
-    if (!selectedFaculty) return [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return batches.filter(batch => {
-      const startDate = new Date(batch.start_date);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(batch.end_date);
-      endDate.setHours(0, 0, 0, 0);
-      return batch.faculty_id === selectedFaculty && today >= startDate && today <= endDate;
-    });
-  }, [batches, selectedFaculty]);
-
-  // NEW: Handler to update date range when a batch is selected
-  const handleBatchSelection = (batchId: string) => {
-    setSelectedBatch(batchId);
-    const batch = batches.find(b => b.id === batchId);
-    if (batch) {
-      setDateRange({
-        from: new Date(batch.start_date),
-        to: new Date(), // Defaults to today's date
-      });
-    }
+  const facultySelectHandler = (facultyId) => {
+    handleFacultySelect(facultyId);
+    setBatchStatusFilter("active"); // Reset status to active when faculty changes
   };
 
-  const handleFacultySelection = (facultyId: string) => {
-    setSelectedFaculty(facultyId);
-    setSelectedBatch(null); // Reset batch selection when faculty changes
-    setDateRange({ from: undefined, to: undefined }); // Reset dates
-  };
-
-  const handleGenerateReport = async () => {
-    if (!selectedBatch || !dateRange.from || !dateRange.to) {
-      toast({
-        title: "Missing Information",
-        description: "Please select a faculty, batch, and a full date range.",
-        variant: "destructive",
-      });
-      return;
+  const displayedBatches = useMemo(() => {
+    // If no faculty is selected or batches aren't loaded, return empty.
+    if (!selectedFacultyId || !batches) {
+      return [];
     }
     
-    setIsLoading(true);
-    setReportData(null);
-    setReportGenerated(false);
-    try {
-      const from = format(dateRange.from, "yyyy-MM-dd");
-      const to = format(dateRange.to, "yyyy-MM-dd");
+    // Primary filter: only show batches for the selected faculty.
+    return batches.filter((batch) => {
+      if (batch.faculty_id !== selectedFacultyId) {
+        return false;
+      }
       
-      const response = await fetch(
-        `${API_BASE_URL}/api/attendance/report/${selectedBatch}?startDate=${from}&endDate=${to}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!response.ok) throw new Error("No attendance data found for the selected criteria.");
+      // For non-admins, show only active batches.
+      if (userRole !== "admin") {
+        return batch.status === "active";
+      }
 
-      const data: ReportApiResponse = await response.json();
-      setReportData(data);
-    } catch (error) {
-      toast({
-        title: "Could Not Generate Report",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-      setReportGenerated(true);
-    }
-  };
-
-  const processedReport = useMemo((): ProcessedReport | null => {
-    if (!reportData || !reportData.attendance_by_date || !reportData.students) return null;
-    const dates = Object.keys(reportData.attendance_by_date).sort();
-    if (dates.length === 0) return null;
-
-    const studentRows = reportData.students.map(student => {
-      let present_count = 0;
-      const daily_statuses = dates.map(date => {
-        const student_record = reportData.attendance_by_date[date]?.find(r => r.student_id === student.id);
-        if (student_record) {
-          if (student_record.is_present) {
-            present_count++;
-            return { status: 'present' };
-          }
-          return { status: 'absent' };
-        }
-        return { status: 'no_class' };
-      });
-      const total_classes = dates.length;
-      const percentage = total_classes > 0 ? Math.round((present_count / total_classes) * 100) : 0;
-      return { id: student.id, name: student.name, daily_statuses, present_count, total_classes, percentage };
+      // For admins, filter by the selected status (active/completed).
+      return batch.status.toLowerCase() === batchStatusFilter.toLowerCase();
     });
 
-    const total_present = studentRows.reduce((sum, s) => sum + s.present_count, 0);
-    const total_possible = studentRows.length * dates.length;
-    const overall_percentage = total_possible > 0 ? Math.round((total_present / total_possible) * 100) : 0;
-    const sortedByAttendance = [...studentRows].sort((a, b) => b.percentage - a.percentage);
+  }, [batches, selectedFacultyId, userRole, batchStatusFilter]);
 
-    return {
-      dates,
-      studentRows,
-      summary: {
-        overall_percentage: overall_percentage,
-        total_classes: dates.length,
-        top_performer: sortedByAttendance[0],
-        low_performer: sortedByAttendance[sortedByAttendance.length - 1],
-      }
-    };
-  }, [reportData]);
+  const canRenderReportDescription =
+    processedReport && dateRange.from && dateRange.to;
+
+  const filterGridClasses = `grid grid-cols-1 md:grid-cols-2 ${
+    userRole === "admin" ? "xl:grid-cols-5" : "lg:grid-cols-4"
+  } gap-4 items-end`;
+
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Attendance Report Generator</CardTitle>
-          <CardDescription>Select a faculty and batch to generate a comprehensive attendance report.</CardDescription>
+          <CardDescription>
+            Select filters to generate a comprehensive attendance report.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col sm:flex-row items-center gap-4">
-          <Select onValueChange={handleFacultySelection} value={selectedFaculty || ""} disabled={user?.role === 'faculty'}>
-            <SelectTrigger className="sm:w-[250px]">
-              <SelectValue placeholder="1. Select Faculty" />
-            </SelectTrigger>
-            <SelectContent>
-              {faculties.map((faculty) => (
-                <SelectItem key={faculty.id} value={faculty.id}>{faculty.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedBatch || ""} onValueChange={handleBatchSelection} disabled={!selectedFaculty}>
-            <SelectTrigger className="sm:w-[300px]">
-              <SelectValue placeholder="2. Select Active Batch" />
-            </SelectTrigger>
-            <SelectContent>
-              {activeBatchesForSelectedFaculty.map((batch) => (
-                <SelectItem key={batch.id} value={batch.id}>{batch.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex items-center gap-2">
-            <DatePicker date={dateRange.from} setDate={(date) => setDateRange(prev => ({ ...prev, from: date }))} disabled={!selectedBatch} />
-            <span>to</span>
-            <DatePicker date={dateRange.to} setDate={(date) => setDateRange(prev => ({ ...prev, to: date }))} disabled={!selectedBatch} />
-          </div>
-          <Button onClick={handleGenerateReport} disabled={isLoading || !selectedBatch}>
-            {isLoading ? <Activity className="mr-2 h-4 w-4 animate-spin" /> : <CalendarIcon className="mr-2 h-4 w-4" />}
-            Generate Report
-          </Button>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <Skeleton className="h-10 w-full sm:w-[250px]" />
+              <Skeleton className="h-10 w-full sm:w-[300px]" />
+              <Skeleton className="h-10 w-full sm:w-[250px]" />
+              <Skeleton className="h-10 w-full sm:w-[180px]" />
+            </div>
+          ) : (
+            <div className={filterGridClasses}>
+              <Select
+                onValueChange={facultySelectHandler}
+                value={selectedFacultyId || ""}
+                disabled={userRole === "faculty"}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="1. Select Faculty" />
+                </SelectTrigger>
+                <SelectContent>
+                  {faculties.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {userRole === "admin" && (
+                <Select
+                  value={batchStatusFilter}
+                  onValueChange={(value) => {
+                    setBatchStatusFilter(value);
+                    handleBatchSelect(""); // Reset batch on status change
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active Batches</SelectItem>
+                    <SelectItem value="Completed">Completed Batches</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+
+              <Select
+                value={selectedBatchId || ""}
+                onValueChange={handleBatchSelect}
+                disabled={!selectedFacultyId}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={`2. Select ${
+                      batchStatusFilter === "Completed" ? "Completed" : "Active"
+                    } Batch`}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {displayedBatches.length > 0 ? (
+                    displayedBatches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      No batches found.
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+
+              <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+                <DatePicker
+                  className="w-full"
+                  date={dateRange.from}
+                  setDate={(date) =>
+                    setDateRange((prev) => ({ ...prev, from: date }))
+                  }
+                  disabled={!selectedBatchId}
+                />
+                <span className="hidden sm:inline text-muted-foreground">
+                  to
+                </span>
+                <DatePicker
+                  className="w-full"
+                  date={dateRange.to}
+                  setDate={(date) =>
+                    setDateRange((prev) => ({ ...prev, to: date }))
+                  }
+                  disabled={!selectedBatchId}
+                />
+              </div>
+
+              <Button
+                onClick={() => generateReport()}
+                disabled={isGeneratingReport || !selectedBatchId}
+                className="w-full"
+              >
+                {isGeneratingReport ? (
+                  <Activity className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                )}
+                Generate Report
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {isLoading && <div className="text-center p-8"><Activity className="h-8 w-8 animate-spin mx-auto text-primary" /> <p className="mt-2 text-muted-foreground">Generating your report...</p></div>}
-      
-      {reportGenerated && !isLoading && !processedReport && (
-        <Card>
-            <CardHeader>
-                <CardTitle>No Attendance Data Found</CardTitle>
-                <CardDescription>The report was generated, but there are no attendance records for the selected batch and date range.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <p>You can mark attendance for your batches on the{' '}<Link to="/batches" className="text-primary underline">Batch Management</Link>{' '}page.</p>
-            </CardContent>
-        </Card>
-      )}
-
-      {processedReport && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Attendance Report</CardTitle>
-            <CardDescription>
-              Displaying report for the period of {format(new Date(processedReport.dates[0]), "dd MMM, yyyy")} to {format(new Date(processedReport.dates[processedReport.dates.length - 1]), "dd MMM, yyyy")}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-              <ReportSummaryCard title="Overall Attendance" value={`${processedReport.summary.overall_percentage}%`} icon={BadgePercent} color="text-blue-500" />
-              <ReportSummaryCard title="Total Classes Held" value={processedReport.summary.total_classes} icon={CalendarCheck} color="text-indigo-500" />
-              <ReportSummaryCard title="Top Attendance" value={processedReport.summary.top_performer?.name || 'N/A'} icon={TrendingUp} color="text-green-500" />
-              <ReportSummaryCard title="Lowest Attendance" value={processedReport.summary.low_performer?.name || 'N/A'} icon={TrendingDown} color="text-red-500" />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={
+            isGeneratingReport
+              ? "loading"
+              : isReportGenerated
+              ? "content"
+              : "initial"
+          }
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2 }}
+        >
+          {isGeneratingReport && (
+            <div className="text-center p-8 flex flex-col items-center justify-center h-96">
+              <Activity className="h-8 w-8 animate-spin text-primary" />
+              <p className="mt-4 text-lg font-semibold">
+                Generating Your Report...
+              </p>
+              <p className="text-muted-foreground">Please wait a moment.</p>
             </div>
-            <AttendanceGrid report={processedReport} />
-          </CardContent>
-        </Card>
-      )}
+          )}
+
+          {!isGeneratingReport && !processedReport && isReportGenerated && (
+            <ReportPlaceholder
+              title="No Attendance Data Found"
+              description="There are no records for the selected batch and date range."
+            />
+          )}
+
+          {!isGeneratingReport && !isReportGenerated && (
+            <ReportPlaceholder
+              title="Generate a Report"
+              description="Select a faculty, batch, and date range to begin."
+            />
+          )}
+
+          {!isGeneratingReport && processedReport && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Attendance Report</CardTitle>
+                {canRenderReportDescription && (
+                  <CardDescription>
+                    Report for{" "}
+                    {batches.find((b) => b.id === selectedBatchId)?.name}{" "}
+                    from {format(dateRange.from!, "dd MMM, yyyy")} to{" "}
+                    {format(dateRange.to!, "dd MMM, yyyy")}.
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+                  <ReportSummaryCard
+                    title="Overall Attendance"
+                    value={`${processedReport.summary.overall_percentage}%`}
+                    icon={BadgePercent}
+                    color="text-blue-500"
+                  />
+                  <ReportSummaryCard
+                    title="Total Classes"
+                    value={processedReport.summary.total_classes}
+                    icon={CalendarCheck}
+                    color="text-indigo-500"
+                  />
+                  <ReportSummaryCard
+                    title="Top Performer"
+                    value={processedReport.summary.top_performer?.name || "N/A"}
+                    icon={TrendingUp}
+                    color="text-green-500"
+                  />
+                  <ReportSummaryCard
+                    title="Low Performer"
+                    value={
+                      processedReport.summary.low_performer?.name || "N/A"
+                    }
+                    icon={TrendingDown}
+                    color="text-red-500"
+                  />
+                </div>
+                <AttendanceGrid report={processedReport} />
+              </CardContent>
+            </Card>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };

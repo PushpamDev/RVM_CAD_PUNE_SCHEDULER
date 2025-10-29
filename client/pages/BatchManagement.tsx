@@ -1,156 +1,109 @@
-// client/pages/BatchManagement.tsx
-
 import React, { useState, useMemo, useEffect } from "react";
-import { MoreVertical, Plus, Trash2, UserCheck, Users, Edit } from "lucide-react";
+import { Plus, GitMerge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Toaster, toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL } from "@/lib/api";
 import { useAuth } from "../hooks/AuthContext";
 import { useBatchData } from '../hooks/useBatchData';
 import { BatchDialog } from '../components/BatchDialog';
-import { StudentListDialog } from '../components/StudentListDialog.tsx';
-import { AttendanceDialog } from "../components/AttendanceDialog";
 import { BatchTable } from "../components/BatchTable";
-import type { Batch, BatchFormData, Student } from '../types/batchManagement';
+import type { Batch, BatchFormData, MergeBatchesPayload } from '../types/batchManagement';
 
-// --- Helper Functions ---
+// --- New Merge Batches Dialog Component ---
+interface MergeBatchesDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  batches: Batch[];
+  onMerge: (payload: MergeBatchesPayload) => Promise<void>;
+}
 
-const formatDisplayDate = (dateString: string): string => {
-  if (!dateString) return "N/A";
-  try {
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'UTC', 
-    };
-    return new Intl.DateTimeFormat('en-GB', options).format(date).replace(/ /g, '/');
-  } catch (error) {
-    return "Invalid Date";
-  }
-};
+function MergeBatchesDialog({ open, onOpenChange, batches, onMerge }: MergeBatchesDialogProps) {
+  const [sourceBatchId, setSourceBatchId] = useState<string>('');
+  const [targetBatchId, setTargetBatchId] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
 
-const isFeePending = (remark: string): boolean => {
-  if (!remark) return false;
-  const lowerCaseRemark = remark.toLowerCase().trim().replace(/\s/g, "");
-  if (lowerCaseRemark.includes("fullpaid")) return false;
-  const dateRegex = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/;
-  const match = remark.match(dateRegex);
-  let parsedDate;
-  if (match) {
-    const [_, day, month, year] = match;
-    parsedDate = new Date(`${year}-${month}-${day}`);
-  } else {
-    let dateString = remark.toLowerCase().trim().replace(/(st|nd|rd|th)/, "");
-    if (!/\d{4}/.test(dateString)) dateString += ` ${new Date().getFullYear()}`;
-    parsedDate = new Date(dateString);
-  }
-  if (isNaN(parsedDate.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  parsedDate.setHours(0, 0, 0, 0);
-  return parsedDate <= today;
-};
+  useEffect(() => {
+    if (open) {
+      setSourceBatchId('');
+      setTargetBatchId('');
+    }
+  }, [open]);
+
+  const handleSubmit = async () => {
+    if (!sourceBatchId || !targetBatchId) {
+      toast.error("Please select both a source and a target batch.");
+      return;
+    }
+    if (sourceBatchId === targetBatchId) {
+      toast.error("Source and target batches cannot be the same.");
+      return;
+    }
+    
+    setIsSaving(true);
+    // Use the updated payload structure
+    await onMerge({ sourceBatchId, targetBatchId });
+    setIsSaving(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Merge Batches</DialogTitle>
+          <DialogDescription>
+            Select a source batch to merge its students into a target batch. The source batch will be deleted after the merge.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="source-batch">Source Batch (will be deleted)</Label>
+            <Select onValueChange={setSourceBatchId} value={sourceBatchId}>
+              <SelectTrigger id="source-batch"><SelectValue placeholder="Select a batch to merge from..." /></SelectTrigger>
+              <SelectContent>
+                {batches.map(b => (<SelectItem key={b.id} value={b.id}>{b.name} ({b.students.length} students)</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="target-batch">Target Batch (will receive students)</Label>
+            <Select onValueChange={setTargetBatchId} value={targetBatchId}>
+              <SelectTrigger id="target-batch"><SelectValue placeholder="Select a batch to merge into..." /></SelectTrigger>
+              <SelectContent>
+                {batches.map(b => (<SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={isSaving || !sourceBatchId || !targetBatchId}>
+            {isSaving ? "Merging..." : "Confirm Merge"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // --- Main Component ---
-
 export default function BatchManagement() {
   const { user, token } = useAuth();
+  // The useBatchData hook now returns processed batches that are "substitution-aware"
   const { batches, faculties, allStudents, skills, loading, refetchData, refetchStudents } = useBatchData();
   
-  // Dialog States
   const [isBatchDialogOpen, setIsBatchDialogOpen] = useState(false);
-  const [isStudentListOpen, setIsStudentListOpen] = useState(false);
-  const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
-  
-  // Data State for Dialogs
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<Batch | undefined>(undefined);
-  const [studentsOfSelectedBatch, setStudentsOfSelectedBatch] = useState<Student[]>([]);
-  const [selectedBatchForAttendance, setSelectedBatchForAttendance] = useState<Batch | null>(null);
 
-  // Filter & Pagination States
-  const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFaculty, setSelectedFaculty] = useState("all");
   const [selectedDate, setSelectedDate] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-
-  const BATCHES_PER_PAGE = 10;
-
-  // --- Filter Logic ---
-  const filteredBatches = useMemo(() => {
-    if (!user) return [];
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let processedBatches = [...batches];
-  
-    if (user.role === 'faculty') {
-      processedBatches = processedBatches.filter(batch => {
-        const startDate = new Date(batch.start_date);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(batch.end_date);
-        endDate.setHours(0, 0, 0, 0);
-        return batch.faculty_id === user.id && today >= startDate && today <= endDate;
-      });
-      if (selectedDate) {
-        processedBatches = processedBatches.filter(batch => {
-          const filterDate = new Date(selectedDate);
-          filterDate.setHours(0, 0, 0, 0);
-          const batchStartDate = new Date(batch.start_date);
-          batchStartDate.setHours(0, 0, 0, 0);
-          const batchEndDate = new Date(batch.end_date);
-          batchEndDate.setHours(0, 0, 0, 0);
-          const dayOfWeek = filterDate.toLocaleDateString('en-US', { weekday: 'long' });
-          return filterDate >= batchStartDate && filterDate <= batchEndDate && batch.days_of_week.includes(dayOfWeek);
-        });
-      }
-      if (searchTerm) {
-        processedBatches = processedBatches.filter(batch => batch.name.toLowerCase().includes(searchTerm.toLowerCase()));
-      }
-      return processedBatches.sort((a, b) => a.start_time.localeCompare(b.start_time));
-    }
-  
-    if (user.role === 'admin') {
-      if (statusFilter !== 'all') {
-        processedBatches = processedBatches.filter(batch => {
-          const startDate = new Date(batch.start_date);
-          startDate.setHours(0, 0, 0, 0);
-          const endDate = new Date(batch.end_date);
-          endDate.setHours(0, 0, 0, 0);
-          if (statusFilter === 'active') return today >= startDate && today <= endDate;
-          if (statusFilter === 'upcoming') return today < startDate;
-          if (statusFilter === 'completed') return today > endDate;
-          return false;
-        });
-      }
-      if (selectedFaculty !== 'all') {
-        processedBatches = processedBatches.filter(batch => batch.faculty_id === selectedFaculty);
-      }
-      if (selectedDate) {
-        processedBatches = processedBatches.filter(batch => new Date(batch.start_date) <= new Date(selectedDate) && new Date(batch.end_date) >= new Date(selectedDate));
-      }
-      if (searchTerm) {
-        processedBatches = processedBatches.filter(batch => batch.name.toLowerCase().includes(searchTerm.toLowerCase()));
-      }
-      return processedBatches;
-    }
-    return [];
-  }, [batches, user, searchTerm, selectedDate, selectedFaculty, statusFilter]);
-
-  const totalPages = Math.ceil(filteredBatches.length / BATCHES_PER_PAGE);
-  const paginatedBatches = filteredBatches.slice((currentPage - 1) * BATCHES_PER_PAGE, currentPage * BATCHES_PER_PAGE);
-
-  // --- Action Handlers ---
 
   const handleOpenEditDialog = (batch: Batch) => {
     setSelectedBatch(batch);
@@ -180,6 +133,7 @@ export default function BatchManagement() {
       setIsBatchDialogOpen(false);
     } catch (error: any) {
       toast.error('Save Failed', { description: error.message });
+      throw error; // Re-throw to prevent dialog from closing on failure
     }
   };
 
@@ -197,24 +151,6 @@ export default function BatchManagement() {
       toast.error("Delete Failed", { description: error.message });
     }
   };
-  
-  const handleViewStudents = async (batch: Batch) => {
-    setSelectedBatch(batch);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/batches/${batch.id}/students`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const studentsInBatch = await response.json();
-      const studentsWithFullDetails = studentsInBatch.map((student: Student) => {
-        const fullDetails = allStudents.find(s => s.id === student.id);
-        return { ...student, ...fullDetails };
-      });
-      setStudentsOfSelectedBatch(studentsWithFullDetails);
-      setIsStudentListOpen(true);
-    } catch (error) {
-      console.error("Error fetching students:", error);
-    }
-  };
 
   const handleUpdateRemarks = async (studentId: string, remarks: string) => {
     try {
@@ -225,30 +161,29 @@ export default function BatchManagement() {
       });
       if (!response.ok) throw new Error("Failed to update remarks");
       toast.success("Remarks updated successfully");
-      // Optimistically update UI
-      setStudentsOfSelectedBatch(prev => prev.map(s => s.id === studentId ? { ...s, remarks } : s));
-      refetchStudents();
+      refetchData();
     } catch (error: any) {
       toast.error("Update Failed", { description: error.message });
     }
   };
-  
-  const handleMarkAttendance = async (batch: Batch) => {
-    setSelectedBatchForAttendance(batch);
-    // Logic to fetch students for this batch and open attendance dialog
-    setIsAttendanceDialogOpen(true);
-  };
 
-  const handlePageChange = (page: number) => {
-    if (page > 0 && page <= totalPages) {
-      setCurrentPage(page);
+  const handleMergeBatches = async (payload: MergeBatchesPayload) => {
+    try {
+      // **FIX**: Corrected the API endpoint URL to match the routes file
+      const response = await fetch(`${API_BASE_URL}/api/substitution/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to merge batches.');
+      
+      toast.success("Batches merged successfully!");
+      setIsMergeDialogOpen(false);
+      refetchData();
+    } catch (error: any) {
+      toast.error('Merge Failed', { description: error.message });
     }
-  };
-
-  const getStatusVariant = (status: Batch['status']): "default" | "secondary" | "outline" => {
-    if (status === 'active') return 'default';
-    if (status === 'upcoming') return 'secondary';
-    return 'outline';
   };
 
   return (
@@ -260,9 +195,14 @@ export default function BatchManagement() {
           <p className="text-muted-foreground">Search, filter, and manage all institute batches.</p>
         </div>
         {user?.role === "admin" && (
-          <Button onClick={handleOpenCreateDialog}>
-            <Plus className="h-4 w-4 mr-2" />Add New Batch
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsMergeDialogOpen(true)}>
+              <GitMerge className="h-4 w-4 mr-2" />Merge Batches
+            </Button>
+            <Button onClick={handleOpenCreateDialog}>
+              <Plus className="h-4 w-4 mr-2" />Add New Batch
+            </Button>
+          </div>
         )}
       </div>
 
@@ -301,64 +241,38 @@ export default function BatchManagement() {
         </CardHeader>
         <CardContent>
             <BatchTable
-                batches={paginatedBatches}
+                batches={batches}
                 loading={loading}
                 filters={{ searchTerm, selectedDate, selectedFaculty, statusFilter }}
-                allStudents={allStudents}
+                allFaculties={faculties}
                 onEditBatch={handleOpenEditDialog}
                 onDeleteBatch={handleDeleteBatch}
                 onUpdateRemarks={handleUpdateRemarks}
                 onAttendanceMarked={refetchData}
+                refetchData={refetchData}
             />
-            {totalPages > 1 && (
-              <div className="mt-4">
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem><PaginationPrevious href="#" onClick={(e) => { e.preventDefault(); handlePageChange(currentPage - 1); }} aria-disabled={currentPage === 1} tabIndex={currentPage === 1 ? -1 : undefined} className={currentPage === 1 ? "pointer-events-none opacity-50" : ""} /></PaginationItem>
-                    {[...Array(totalPages)].map((_, i) => (<PaginationItem key={i}><PaginationLink href="#" onClick={(e) => { e.preventDefault(); handlePageChange(i + 1); }} isActive={currentPage === i + 1}>{i + 1}</PaginationLink></PaginationItem>))}
-                    <PaginationItem><PaginationNext href="#" onClick={(e) => { e.preventDefault(); handlePageChange(currentPage + 1); }} aria-disabled={currentPage === totalPages} tabIndex={currentPage === totalPages ? -1 : undefined} className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""} /></PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              </div>
-            )}
         </CardContent>
       </Card>
       
-      {isBatchDialogOpen && (
-        <BatchDialog
-            open={isBatchDialogOpen}
-            onOpenChange={setIsBatchDialogOpen}
-            onSave={handleSaveBatch}
-            batch={selectedBatch}
-            faculties={faculties}
-            allStudents={allStudents}
-            onStudentAdded={refetchStudents}
-        />
-      )}
+      {/* The BatchDialog is now always mounted, and its 'open' prop controls visibility. */}
+      {/* This prevents the infinite loop caused by conditional rendering. */}
+      <BatchDialog
+          open={isBatchDialogOpen}
+          onOpenChange={setIsBatchDialogOpen}
+          onSave={handleSaveBatch}
+          batch={selectedBatch}
+          faculties={faculties}
+          allStudents={allStudents}
+          skills={skills}
+          onStudentAdded={refetchStudents}
+      />
 
-      {isStudentListOpen && selectedBatch && (
-        <StudentListDialog
-          open={isStudentListOpen}
-          onOpenChange={setIsStudentListOpen}
-          batchName={selectedBatch.name}
-          students={studentsOfSelectedBatch}
-          onUpdateRemarks={handleUpdateRemarks}
-        />
-      )}
-
-      {isAttendanceDialogOpen && selectedBatchForAttendance && (
-        <AttendanceDialog
-          open={isAttendanceDialogOpen}
-          onOpenChange={setIsAttendanceDialogOpen}
-          batch={selectedBatchForAttendance}
-          students={studentsOfSelectedBatch} // Assuming you fetch the right students
-          onAttendanceMarked={() => {
-            setIsAttendanceDialogOpen(false);
-            refetchData();
-          }}
-          isFeePending={isFeePending}
-        />
-      )}
+      <MergeBatchesDialog
+        open={isMergeDialogOpen}
+        onOpenChange={setIsMergeDialogOpen}
+        batches={batches}
+        onMerge={handleMergeBatches}
+      />
     </div>
   );
 }

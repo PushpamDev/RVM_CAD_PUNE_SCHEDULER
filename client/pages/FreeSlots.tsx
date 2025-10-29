@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/hooks/AuthContext";
 
 // --- Type Definitions ---
 interface Faculty {
@@ -37,6 +38,7 @@ const formatDisplayDate = (dateString: string): string => {
 // --- Main Component ---
 export default function FreeSlots() {
   const { toast } = useToast();
+  const { token } = useAuth();
 
   // --- State Management ---
   const [faculties, setFaculties] = useState<Faculty[]>([]);
@@ -58,8 +60,12 @@ export default function FreeSlots() {
     const fetchInitialData = async () => {
       try {
         const [facultyRes, skillsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/faculty`),
-          fetch(`${API_BASE_URL}/api/skills`),
+          fetch(`${API_BASE_URL}/api/faculty`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_BASE_URL}/api/skills`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
         ]);
         if (!facultyRes.ok || !skillsRes.ok) throw new Error("Failed to fetch initial filter data.");
         
@@ -78,7 +84,7 @@ export default function FreeSlots() {
       }
     };
     fetchInitialData();
-  }, [toast]);
+  }, [toast, token]);
 
   const handleSearch = async () => {
     if (!startDate || !endDate) {
@@ -111,7 +117,9 @@ export default function FreeSlots() {
     if (selectedSkill) params.append('selectedSkill', selectedSkill);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/free-slots?${params.toString()}`);
+      const response = await fetch(`${API_BASE_URL}/api/free-slots?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: "An unknown error occurred."}));
         throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);

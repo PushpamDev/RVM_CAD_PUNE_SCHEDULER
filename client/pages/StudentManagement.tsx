@@ -1,118 +1,179 @@
-// client/pages/StudentManagement.tsx
-
 import { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Eye, MoreVertical, User as UserIcon } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Eye, MoreVertical } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Skeleton } from "../components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Toaster } from "../components/ui/sonner";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "../components/ui/pagination";
 import { useStudentData } from "../hooks/useStudentData";
-import { StudentDialog } from "../components/student/StudentDialog.tsx"; // Corrected import
+import  StudentDialog  from "../components/student/StudentDialog";
 import { StudentBatchesDialog } from "../components/student/StudentBatchesDialog";
-import type { Student } from "../types/studentManagement";
+import type { Student } from "../types/studentManagement"; // Assumes FacultyStudentCount is in this file
+import { Checkbox } from "../components/ui/checkbox";
 
-// --- Helper Functions for Display ---
+// --- Standardized Helper Functions ---
+// (These functions are unchanged)
+
+const parseFlexibleDate = (dateString: string): Date | null => {
+    if (!dateString) return null;
+    const normalizedStr = dateString.toLowerCase().trim().replace(/(?:st|nd|rd|th)/g, "");
+    const monthMap: { [key: string]: number } = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11, january: 0, february: 1, march: 2, april: 3, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
+    let match;
+    const regexTextMonth = /(\d{1,2})\s+([a-z]{3,})[\s,]*(\d{4})?/;
+    match = normalizedStr.match(regexTextMonth);
+    if (match) {
+        const day = parseInt(match[1], 10);
+        const month = monthMap[match[2]];
+        const year = match[3] ? parseInt(match[3], 10) : new Date().getFullYear();
+        if (month !== undefined && !isNaN(day)) return new Date(Date.UTC(year, month, day));
+    }
+    const regexNumeric = /(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/;
+    match = normalizedStr.match(regexNumeric);
+    if (match) {
+        const part1 = parseInt(match[1], 10), part2 = parseInt(match[2], 10);
+        let year = parseInt(match[3], 10);
+        if (year < 100) {
+            year += 2000;
+        }
+        let day: number, month: number;
+        if (part2 > 12 && part1 <= 12) { day = part2; month = part1 - 1; }
+        else { day = part1; month = part2 - 1; }
+        if (!isNaN(day) && month >= 0 && month < 12 && !isNaN(year)) {
+            const d = new Date(Date.UTC(year, month, day));
+            if (d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day) return d;
+        }
+    }
+    const parsedDate = new Date(dateString);
+    if (!isNaN(parsedDate.getTime())) return new Date(Date.UTC(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate()));
+    return null;
+};
+
+
 const isFeePending = (remark: string): boolean => {
   if (!remark) return false;
-  
   const lowerCaseRemark = remark.toLowerCase().trim();
-  if (lowerCaseRemark.includes("fullpaid") || lowerCaseRemark.includes("full paid")) return false; // If 'fullpaid', it's NOT pending.
-
-  // Regex to match common date formats (DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY, DD MMM YYYY)
-  // This will try to extract a date. If a date is present, we compare it to today.
-  // Example: "due 25-10-2025" or "pending on 1/11/2023"
-  const dateMatch = lowerCaseRemark.match(/(\d{1,2})[\s\-\/\.](\d{1,2}|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[\s\-\/\.](\d{2,4})/);
-  
-  if (dateMatch) {
-    try {
-      let [_, day, month, year] = dateMatch;
-      // Handle abbreviated month names
-      if (isNaN(Number(month))) {
-        const monthMap: { [key: string]: string } = {
-          jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-          jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-        };
-        month = monthMap[month];
-      }
-      
-      // Ensure year is 4 digits
-      if (year.length === 2) {
-        year = `20${year}`; // Assuming 2-digit years are in current century
-      }
-
-      const parsedDate = new Date(`${year}-${month}-${day}`);
-      if (isNaN(parsedDate.getTime())) return false; // Invalid date
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0); // Normalize today's date to start of day
-      parsedDate.setHours(0, 0, 0, 0); // Normalize parsed date to start of day
-      
-      return parsedDate <= today; // Fee is pending if due date is today or in the past
-    } catch (error) {
-      console.error("Error parsing date from remark:", remark, error);
-      return false; // If date parsing fails, assume not pending based on date
-    }
-  }
-
-  // If no date is found, and it's not "fullpaid", we could infer pending status
-  // or require a more explicit "pending" keyword. For now, let's keep it date-focused.
-  // You might add conditions like: `return lowerCaseRemark.includes("pending");`
-  return false;
+  const fullPaidRegex = /full(y)?\s*paid/;
+  if (fullPaidRegex.test(lowerCaseRemark)) return false;
+  const parsedDate = parseFlexibleDate(remark);
+  if (!parsedDate) return true; // Treat as pending if date is unparsable but not marked as paid
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return parsedDate <= today;
 };
 
 const getRemarkStyles = (remark: string): React.CSSProperties => {
-  if (isFeePending(remark)) {
-    return { color: "red", fontWeight: "bold" };
-  }
-  if (remark?.toLowerCase().includes("fullpaid")) {
-    return { color: "green", fontWeight: "bold" };
-  }
+  if (isFeePending(remark)) return { color: "red", fontWeight: "bold" };
+  const fullPaidRegex = /full(y)?\s*paid/;
+  if (remark && fullPaidRegex.test(remark.toLowerCase())) return { color: "green", fontWeight: "bold" };
   return {};
 };
 
+const formatPhoneNumber = (phone: string): string => {
+    if (!phone || typeof phone !== 'string') return 'N/A';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) return `+91 ${cleaned.substring(0, 5)} ${cleaned.substring(5)}`;
+    if (cleaned.length === 12 && cleaned.startsWith('91')) return `+${cleaned.substring(0, 2)} ${cleaned.substring(2, 7)} ${cleaned.substring(7)}`;
+    return phone;
+};
+
+const getInitials = (name: string = ""): string => name.split(' ').map(n => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+
+export const formatFullDate = (dateString: string): string => {
+  if (!dateString) return "N/A";
+  try {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC'
+    }).format(date);
+  } catch (error) {
+    return "Invalid Date";
+  }
+};
+
+
 // --- Main Component ---
 export default function StudentManagement() {
-  const { students, batches, faculties, loading, saveStudent, deleteStudent } = useStudentData();
+  // --- 1. Get ALL state and setters from the hook ---
+  const { 
+    students, 
+    totalCount, 
+    loading, 
+    faculties, 
+    facultyCounts,
+    saveStudent, 
+    deleteStudent,
+    searchTerm,
+    setSearchTerm,
+    facultyFilter,
+    setFacultyFilter,
+    feePendingFilter,
+    setFeePendingFilter,
+    unassignedFilter,
+    setUnassignedFilter,
+    currentPage,
+    setCurrentPage,
+    STUDENTS_PER_PAGE
+  } = useStudentData();
+  
+  // --- 2. Remove all local state for filters ---
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
   const [isBatchesDialogOpen, setIsBatchesDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | undefined>(undefined);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterOption, setFilterOption] = useState<string>("all");
 
-  const filteredStudents = useMemo(() => {
-    let studentsToFilter = [...students];
-    if (searchTerm) {
-      studentsToFilter = studentsToFilter.filter(s =>
-        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.admission_number.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    if (filterOption === 'unassigned') {
-      const enrolledStudentIds = new Set(batches.flatMap(b => b.students.map(s => s.id)));
-      return studentsToFilter.filter(s => !enrolledStudentIds.has(s.id));
-    }
-    if (filterOption !== 'all') {
-      const studentIdsForFaculty = new Set(
-        batches.filter(b => b.faculty_id === filterOption).flatMap(b => b.students.map(s => s.id))
-      );
-      return studentsToFilter.filter(s => studentIdsForFaculty.has(s.id));
-    }
-    return studentsToFilter;
-  }, [students, batches, filterOption, searchTerm]);
+  // --- 3. Remove client-side filtering ---
+  // The 'students' array from the hook IS the filtered list.
 
+  // --- 4. Memoize the faculty count map (for the dropdown) ---
+  const facultyStudentCountMap = useMemo(() => {
+    return new Map(
+      (facultyCounts || []).map(fc => [fc.faculty_id, fc.total_students])
+    );
+  }, [facultyCounts]);
+
+  // Create a total count for "All Faculties" from the counts array
+  const allStudentsCount = useMemo(() => {
+    // This sums up all students assigned to a faculty
+    return (facultyCounts || []).reduce((sum, fc) => sum + fc.total_students, 0);
+  }, [facultyCounts]);
+  // --- END UPDATED SECTION ---
+
+  // --- 5. Update Pagination Logic ---
+  const totalPages = Math.ceil(totalCount / STUDENTS_PER_PAGE);
+  const handlePageChange = (page: number) => { 
+    if (page > 0 && page <= totalPages) {
+      setCurrentPage(page); 
+    }
+  };
+
+  // Dialog handlers
   const handleAdd = () => { setSelectedStudent(undefined); setIsStudentDialogOpen(true); };
   const handleEdit = (student: Student) => { setSelectedStudent(student); setIsStudentDialogOpen(true); };
   const handleViewBatches = (student: Student) => { setSelectedStudent(student); setIsBatchesDialogOpen(true); };
 
+  // Actions menu component
+  const ActionsMenu = ({ student }: { student: Student }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => handleViewBatches(student)}><Eye className="mr-2 h-4 w-4" />View Batches</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleEdit(student)}><Edit className="mr-2 h-4 w-4" />Edit Student</DropdownMenuItem>
+        <DropdownMenuItem className="text-red-500" onClick={() => deleteStudent(student.id)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="space-y-6">
       <Toaster richColors />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Student Management</h1>
           <p className="text-muted-foreground">Search, manage, and view student details and enrollments.</p>
@@ -122,63 +183,152 @@ export default function StudentManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Students</CardTitle>
-          <CardDescription>Found {filteredStudents.length} of {students.length} total students.</CardDescription>
+          {/* 6. Use totalCount from the hook */}
+          <CardDescription>Found {totalCount} total students.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <div className="relative flex-grow sm:flex-grow-0"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search by name or admission no..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-8 sm:w-[300px]" /></div>
-            <Select value={filterOption} onValueChange={setFilterOption}>
-              <SelectTrigger className="w-full sm:w-auto"><SelectValue placeholder="Filter by..." /></SelectTrigger>
+          {/* 7. Wire all inputs to the hook's state and setters */}
+          <div className="flex flex-wrap items-center gap-4 mb-4">
+            <div className="relative flex-grow sm:flex-grow-0">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search by name or admission no..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                className="pl-8 sm:w-[300px]" 
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="fee_pending" 
+                  checked={feePendingFilter} 
+                  onCheckedChange={(checked) => setFeePendingFilter(Boolean(checked))} 
+                />
+                <label htmlFor="fee_pending" className="text-sm font-medium leading-none">
+                    Fee Pending
+                </label>
+            </div>
+            <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="unassigned" 
+                  checked={unassignedFilter} 
+                  onCheckedChange={(checked) => setUnassignedFilter(Boolean(checked))} 
+                />
+                <label htmlFor="unassigned" className="text-sm font-medium leading-none">
+                    Not in any Batch
+                </label>
+            </div>
+            
+            <Select 
+              value={facultyFilter} 
+              onValueChange={setFacultyFilter}
+            >
+              <SelectTrigger className="w-full sm:w-[280px]"><SelectValue placeholder="Filter by Faculty..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Show All Students</SelectItem>
-                <SelectItem value="unassigned">Not in any Batch</SelectItem>
-                {faculties.map((f) => (<SelectItem key={f.id} value={f.id}>Students of {f.name}</SelectItem>))}
+                {/* Use the calculated 'allStudentsCount' for the total */}
+                <SelectItem value="all">All Faculties ({allStudentsCount})</SelectItem>
+                {faculties.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    Students of {f.name} ({facultyStudentCountMap.get(f.id) || 0})
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
+
           <div className="rounded-md border">
-            <Table>
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Admission No.</TableHead><TableHead>Phone No.</TableHead><TableHead>Remarks</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <Table className="md:w-auto min-w-full">
+              <TableHeader className="hidden md:table-header-group">
+                <TableRow>
+                  <TableHead>Student</TableHead>
+                  <TableHead>Phone No.</TableHead>
+                  <TableHead>Remarks</TableHead>
+                  <TableHead className="text-right w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
+                {/* 8. Iterate over 'students' from the hook, not 'paginatedStudents' */}
                 {loading ? (
-                  Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-12 w-full" /></TableCell></TableRow>))
-                ) : filteredStudents.length > 0 ? (
-                  filteredStudents.map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell className="font-medium">
+                  Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-20 w-full" /></TableCell></TableRow>))
+                ) : students.length > 0 ? (
+                  students.map((student) => (
+                    <TableRow key={student.id} className="block border-b mb-4 last:mb-0 last:border-b-0 md:table-row md:border-b md:mb-0">
+                      <TableCell className="flex justify-between items-center p-4 font-medium md:table-cell">
                         <div className="flex items-center gap-3">
-                          <Avatar><AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${student.name}`} /><AvatarFallback><UserIcon className="h-4 w-4" /></AvatarFallback></Avatar>
-                          <div className="flex items-center gap-2">
-                            <span>{student.name}</span>
-                            {/* --- CORRECTED LOGIC FOR RED DOT --- */}
-                            {isFeePending(student.remarks) && <div className="h-2 w-2 rounded-full bg-red-500" title="Fee Pending"/>}
+                          <Avatar><AvatarFallback>{getInitials(student.name)}</AvatarFallback></Avatar>
+                          <div>
+                            <p className="font-semibold text-base flex items-center gap-2">
+                              {student.name}
+                              {isFeePending(student.remarks) && <span className="h-2.5 w-2.5 block rounded-full bg-red-500" title="Fee Pending"/>}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{student.admission_number}</p>
                           </div>
                         </div>
+                        <div className="md:hidden"><ActionsMenu student={student} /></div>
                       </TableCell>
-                      <TableCell>{student.admission_number}</TableCell>
-                      <TableCell>{student.phone_number}</TableCell>
-                      <TableCell style={getRemarkStyles(student.remarks)} className="max-w-xs truncate" title={student.remarks}>{student.remarks || "-"}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewBatches(student)}><Eye className="mr-2 h-4 w-4" />View Batches</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEdit(student)}><Edit className="mr-2 h-4 w-4" />Edit Student</DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-500" onClick={() => deleteStudent(student.id)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      <TableCell className="block p-4 pt-2 md:pt-4 text-right before:content-['Phone_No:'] before:float-left before:font-bold md:table-cell md:text-left md:before:content-['']">
+                        {formatPhoneNumber(student.phone_number)}
+                      </TableCell>
+                      <TableCell className="block p-4 pt-2 md:pt-4 text-right before:content-['Remarks:'] before:float-left before:font-bold md:table-cell md:text-left md:before:content-['']" style={getRemarkStyles(student.remarks)}>
+                        <span className="truncate" title={student.remarks}>{student.remarks || "-"}</span>
+                      </TableCell>
+                      <TableCell className="hidden text-right md:table-cell">
+                        <ActionsMenu student={student} />
                       </TableCell>
                     </TableRow>
                   ))
-                ) : (<TableRow><TableCell colSpan={5} className="text-center h-24">No students found.</TableCell></TableRow>)}
+                ) : (
+                  <TableRow><TableCell colSpan={4} className="text-center h-24">No students found.</TableCell></TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
+
+          {/* 9. Wire Pagination to hook state and totalPages */}
+          {totalPages > 1 && (
+            <div className="mt-4">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious 
+                      href="#" 
+                      onClick={(e) => { e.preventDefault(); handlePageChange(currentPage - 1); }} 
+                      aria-disabled={currentPage === 1} 
+                      className={currentPage === 1 ? "pointer-events-none opacity-50" : ""} 
+                    />
+                  </PaginationItem>
+                  
+                  {/* Note: This pagination UI is not ideal for many pages, but it matches your code */}
+                  {[...Array(totalPages)].map((_, i) => (
+                    <PaginationItem key={i}>
+                      <PaginationLink 
+                        href="#" 
+                        onClick={(e) => { e.preventDefault(); handlePageChange(i + 1); }} 
+                        isActive={currentPage === i + 1}
+                      >
+                        {i + 1}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  
+                  <PaginationItem>
+                    <PaginationNext 
+                      href="#" 
+                      onClick={(e) => { e.preventDefault(); handlePageChange(currentPage + 1); }} 
+                      aria-disabled={currentPage === totalPages} 
+                      className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""} 
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </CardContent>
       </Card>
 
+      {/* Dialogs use the hook's save/delete functions */}
       <StudentDialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen} onSave={(data) => saveStudent(data, selectedStudent?.id)} student={selectedStudent} />
-      <StudentBatchesDialog open={isBatchesDialogOpen} onOpenChange={setIsBatchesDialogOpen} student={selectedStudent} batches={batches} />
+      <StudentBatchesDialog open={isBatchesDialogOpen} onOpenChange={setIsBatchesDialogOpen} student={selectedStudent} />
     </div>
   );
 }

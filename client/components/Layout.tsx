@@ -32,7 +32,9 @@ import {
   Megaphone, 
   Menu,
   Settings,
-  UserCircle
+  UserCircle,
+  Ticket,
+  FileText // Import a new icon for the report
 } from "lucide-react";
 
 // --- INTERFACE ---
@@ -48,10 +50,12 @@ const navigation = [
   { name: "Batch Management", href: "/batches", icon: Calendar },
   { name: "Student Management", href: "/students", icon: Users },
   { name: "Attendance", href: "/attendance", icon: Calendar },
+  { name: "Faculty Attendance Report", href: "/faculty-attendance-report", icon: FileText },
   { name: "Suggestions", href: "/suggestions", icon: Users },
   { name: "Free Slots", href: "/free-slots", icon: Clock },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Schedule", href: "/schedule", icon: Calendar },
+  { name: "Tickets", href: "/tickets", icon: Ticket },
 ];
 
 // --- SIDEBAR COMPONENT ---
