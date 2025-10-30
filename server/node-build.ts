@@ -9,18 +9,23 @@ const port = process.env.PORT || 3000;
 const __dirname = import.meta.dirname;
 const distPath = path.join(__dirname, "../spa");
 
-// Serve static files
+// 1. Serve static files (like main.js, main.css)
+// This must be BEFORE the catch-all middleware
 app.use(express.static(distPath));
 
-// Handle React Router - serve index.html for all non-API routes
-// app.get("*", (req, res) => {
-//   // Don't serve index.html for API routes
-//   if (req.path.startsWith("/api/") || req.path.startsWith("/health")) {
-//     return res.status(404).json({ error: "API endpoint not found" });
-//   }
+// 2. Handle React Router - serve index.html for all non-API, non-static routes
+// This middleware will run *after* your API routes (from createServer)
+// and *after* the static file handler above.
+app.use((req, res, next) => {
+  // If the request is for an API route, let it go.
+  // The server will handle it or 404 if not found.
+  if (req.path.startsWith("/api/") || req.path.startsWith("/health")) {
+    return next();
+  }
 
-//   res.sendFile(path.join(distPath, "index.html"));
-// });
+  // For everything else, send the main SPA file
+  res.sendFile(path.join(distPath, "index.html"));
+});
 
 app.listen(port, () => {
   console.log(`🚀 Fusion Starter server running on port ${port}`);
