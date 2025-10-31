@@ -1,3 +1,6 @@
+// types/batchManagement.ts
+
+// --- Other Interfaces (Skill, Availability, Faculty, Student - Unchanged) ---
 export interface Skill {
   id: string;
   name: string;
@@ -31,31 +34,37 @@ export interface Student {
 
 export type BatchStatus = 'upcoming' | 'active' | 'completed';
 
+// --- UPDATED Batch Interface ---
 export interface Batch {
   id: string;
   name: string;
   description?: string;
-  students: Student[];
+  // REMOVED: students: Student[]; // Backend now sends student_count instead
+  student_count: number; // ADDED: Directly from the backend API
   faculty_id: string;
-  faculty: { id: string; name: string };
+  faculty: { id: string; name: string }; // Keep this for display
   start_date: string;
   end_date: string;
   start_time: string;
   end_time: string;
   days_of_week: string[];
-  skill: Skill;
+  skill: Skill; // Assuming skill object is included
   max_students: number;
-  status: BatchStatus;
+  status: BatchStatus; // The status stored in the DB
 
-  // **NEW**: Optional fields to hold substitution data processed by useBatchData
+  // Optional fields for substitution data (processed by useBatchData or similar)
   isSubstituted?: boolean;
   original_faculty?: { id: string; name: string };
-  // This 'id' on substitutionDetails is the ID of the substitution record itself
-  substitutionDetails?: FacultySubstitution; 
+  substitutionDetails?: FacultySubstitution;
+
+  // ADDED: Optional field for status calculated on the frontend
+  derivedStatus?: 'upcoming' | 'active' | 'completed';
 }
+// --- END UPDATED Batch Interface ---
 
 export const BATCH_STATUSES: BatchStatus[] = ["upcoming", "active", "completed"];
 
+// --- Other Interfaces (BatchFormData, Payloads, Substitution - Unchanged) ---
 export interface BatchFormData {
   name: string;
   description: string;
@@ -71,19 +80,16 @@ export interface BatchFormData {
   daysOfWeek: string[];
 }
 
-// Payload for PERMANENT faculty reassignment
 export interface AssignSubstitutePayload {
   batchId: string;
   facultyId: string;
 }
 
-// Payload for PERMANENTLY merging two batches
 export interface MergeBatchesPayload {
   targetBatchId: string;
   sourceBatchId: string;
 }
 
-// Represents a temporary substitution record from the database
 export interface FacultySubstitution {
   id: string;
   batch_id: string;
@@ -94,7 +100,6 @@ export interface FacultySubstitution {
   notes?: string;
 }
 
-// Payload for creating a TEMPORARY substitution for a leave period
 export interface CreateSubstitutionPayload {
   batchId: string;
   substituteFacultyId: string;
@@ -103,11 +108,10 @@ export interface CreateSubstitutionPayload {
   notes?: string;
 }
 
-// --- NEW ---
-// Payload for UPDATING a TEMPORARY substitution
-export interface UpdateSubstitutionPayload {
-  substituteFacultyId?: string;
-  startDate?: string;
-  endDate?: string;
-  notes?: string | null;
+// --- Interface used in Dashboard (Added here for completeness) ---
+// This was previously defined locally in index.tsx, adding it here centralizes types
+export interface FacultyActiveStudents {
+  faculty_id: string;
+  faculty_name: string;
+  active_students: number;
 }

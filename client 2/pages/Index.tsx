@@ -202,7 +202,7 @@ function QuickActions() {
     <Card>
       <CardHeader><CardTitle>Quick Actions</CardTitle><CardDescription>Common tasks and shortcuts</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
-        <Link to="/faculty-management"><Button variant="outline" className="w-full justify-start"><Users className="h-4 w-4 mr-2" />Add New Faculty<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
+        <Link to="/faculty"><Button variant="outline" className="w-full justify-start"><Users className="h-4 w-4 mr-2" />Add New Faculty<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
         <Link to="/batch-management"><Button variant="outline" className="w-full justify-start"><Calendar className="h-4 w-4 mr-2" />Create New Batch<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
         <Link to="/skills"><Button variant="outline" className="w-full justify-start"><BookOpen className="h-4 w-4 mr-2" />Manage Skills<ArrowRight className="h-4 w-4 ml-auto" /></Button></Link>
       </CardContent>
@@ -423,7 +423,7 @@ export default function Index() {
         {user?.role === "admin" && (
           <StatCard title="Total Faculty" value={dashboardStats.totalFaculty} icon={Users} colorClass="text-blue-600" to="/faculty-management" trend="+2 last month" />
         )}
-        <StatCard title="Active Batches" value={dashboardStats.activeBatches} icon={Calendar} colorClass="text-green-600" to="/batch-management?status=active" trend="+5 from last week" />
+        <StatCard title="Active Batches" value={dashboardStats.activeBatches} icon={Calendar} colorClass="text-green-600" to="/batches?status=active" trend="+5 from last week" />
         <StatCard title={user?.role === "faculty" ? "Your Attendance" : "Overall Attendance"} value={`${dashboardStats.attendancePercentage ? dashboardStats.attendancePercentage.toFixed(1) : "N/A"}%`} icon={Activity} colorClass="text-purple-600" to="/faculty-attendance-report" trend="Updated daily" />
         <StatCard title={user?.role === "faculty" ? "Your Active Students" : "Active Students"} value={dashboardStats.activeStudents} icon={Users} colorClass="text-sky-600" to="/student-management?status=active" trend="In ongoing batches" />
         <StatCard title={user?.role === "faculty" ? "Your Total Students" : "Total Students"} value={dashboardStats.totalStudents} icon={Users} colorClass="text-orange-600" to="/student-management" trend="+10 enrollments" />

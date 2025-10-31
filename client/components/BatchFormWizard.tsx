@@ -1,3 +1,5 @@
+// client/components/BatchFormWizard.tsx
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -9,6 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from '../hooks/AuthContext';
+// --- FIX: Added Loader2 import ---
+import { Loader2 } from 'lucide-react';
 import {
   type Batch,
   type BatchFormData,
@@ -36,38 +40,50 @@ const initialFormData: BatchFormData = {
   studentIds: [], daysOfWeek: [],
 };
 
-export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents, skills, onSave, onStudentAdded }: BatchDialogProps) {
+export function BatchDialog({
+    open,
+    onOpenChange,
+    batch,
+    faculties,
+    allStudents,
+    skills,
+    onSave,
+    onStudentAdded
+}: BatchDialogProps) {
   const { token } = useAuth();
   const [formData, setFormData] = useState<BatchFormData>(initialFormData);
   const [isSaving, setIsSaving] = useState(false);
-  const [isFetchingStudents, setIsFetchingStudents] = useState(false);
+  const [isFetchingInitialStudents, setIsFetchingInitialStudents] = useState(false);
 
   const [newStudentName, setNewStudentName] = useState("");
   const [newStudentAdmissionNumber, setNewStudentAdmissionNumber] = useState("");
   const [newStudentPhoneNumber, setNewStudentPhoneNumber] = useState("");
   const [newStudentRemarks, setNewStudentRemarks] = useState("");
-  const [studentSearch, setStudentSearch] = useState("");
+  const [isAddingStudent, setIsAddingStudent] = useState(false); // Kept loading state for add
 
+  const [studentSearch, setStudentSearch] = useState("");
   const wasOpenRef = useRef(open);
 
-  // Effect for initializing form when dialog opens or batch changes
+  // Effect 1: Initialize form and fetch initially enrolled students
   useEffect(() => {
     if (open && !wasOpenRef.current) {
       const initializeForm = async () => {
         setIsSaving(false);
-        setStudentSearch("");
+        setStudentSearch(""); // Clear client-side search term
         setNewStudentName(""); setNewStudentAdmissionNumber(""); setNewStudentPhoneNumber(""); setNewStudentRemarks("");
+        setIsAddingStudent(false);
 
         if (batch) {
-          setIsFetchingStudents(true);
+          setIsFetchingInitialStudents(true);
           let initialStudentIds: string[] = [];
           try {
+            // Fetch only the IDs of enrolled students
             const response = await fetch(`${API_BASE_URL}/api/batches/${batch.id}/students`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (!response.ok) throw new Error("Failed to load enrolled students.");
-            const enrolledStudents: Student[] = await response.json();
-            initialStudentIds = enrolledStudents.map(s => s.id);
+            const enrolledStudentsData: Student[] = await response.json();
+            initialStudentIds = enrolledStudentsData.map(s => s.id);
           } catch (error: any) {
             toast.error("Error loading student data", { description: error.message });
           } finally {
@@ -78,48 +94,42 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
                 endDate: batch.end_date ? batch.end_date.split('T')[0] : "",
                 startTime: batch.start_time || "",
                 endTime: batch.end_time || "",
-                facultyId: batch.original_faculty?.id || batch.faculty_id || "",
+                // This is correct: always edit the original faculty
+                facultyId: batch.original_faculty?.id || batch.faculty_id || "", 
                 skillId: batch.skill?.id || "",
                 maxStudents: batch.max_students || 15,
                 status: batch.status,
                 studentIds: initialStudentIds,
                 daysOfWeek: batch.days_of_week || [],
-             });
-             setIsFetchingStudents(false);
+            });
+             setIsFetchingInitialStudents(false);
           }
         } else {
           setFormData(initialFormData);
-          setIsFetchingStudents(false);
+          setIsFetchingInitialStudents(false);
         }
       };
       initializeForm();
     }
     wasOpenRef.current = open;
-  }, [open, batch?.id, token]); // Depend on batch ID
+  }, [open, batch?.id, token]);
 
-  // --- UPDATED handleAddStudent ---
+
+  // handleAddStudent (with loading state)
   const handleAddStudent = async () => {
     if (!newStudentName.trim() || !newStudentAdmissionNumber.trim()) {
-      toast.error("Student Name and Admission Number are required.");
-      return;
+      toast.error("Student Name and Admission Number are required."); return;
     }
-    // Consider adding a local loading state specific to adding a student
-    // const [isAddingStudent, setIsAddingStudent] = useState(false);
-    // setIsAddingStudent(true);
+    setIsAddingStudent(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/students`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          name: newStudentName,
-          admission_number: newStudentAdmissionNumber,
-          phone_number: newStudentPhoneNumber,
-          remarks: newStudentRemarks,
-        }),
+        body: JSON.stringify({ name: newStudentName, admission_number: newStudentAdmissionNumber, phone_number: newStudentPhoneNumber, remarks: newStudentRemarks }),
       });
       const result = await response.json(); // Assuming result contains the new student with ID
-      if (!response.ok || !result?.id) { // Check if ID exists
-          throw new Error(result.error || "Failed to add student or receive valid ID.");
+      if (!response.ok || !result?.id) { 
+          throw new Error(result.error || "Failed to add student or receive valid ID."); 
       }
 
       toast.success(`Student "${newStudentName}" added successfully.`);
@@ -127,7 +137,7 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
       // 1. Update the local form state to include the new student ID
       setFormData(prev => ({
         ...prev,
-        // Add the new ID only if it's not already there (unlikely but safe)
+        // Add the new ID and auto-select them
         studentIds: prev.studentIds.includes(result.id) ? prev.studentIds : [...prev.studentIds, result.id]
       }));
 
@@ -137,33 +147,31 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
       setNewStudentPhoneNumber("");
       setNewStudentRemarks("");
 
-      // 3. Trigger parent refetch AFTER local state is updated
-      // This ensures the list refresh doesn't interfere with selecting the new student
+      // 3. Trigger parent refetch of the FULL student list
       onStudentAdded();
 
     } catch (error: any) {
       toast.error("Failed to add student", { description: error.message });
     } finally {
-        // setIsAddingStudent(false);
+        setIsAddingStudent(false);
     }
   };
 
+  // handleStudentToggle (Unchanged)
   const handleStudentToggle = (studentId: string) => {
     setFormData(prev => ({ ...prev, studentIds: prev.studentIds.includes(studentId) ? prev.studentIds.filter(id => id !== studentId) : [...prev.studentIds, studentId] }));
   };
 
+  // handleDayToggle (Unchanged)
   const handleDayToggle = (day: string) => {
     setFormData(prev => ({ ...prev, daysOfWeek: prev.daysOfWeek.includes(day) ? prev.daysOfWeek.filter(d => d !== day) : [...prev.daysOfWeek, day] }));
   };
 
+  // handleSubmit (Unchanged)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.facultyId) {
-      toast.error("Please select a faculty."); return;
-    }
-    if (!formData.skillId) {
-      toast.error("Please select a skill."); return;
-    }
+    if (!formData.facultyId) { toast.error("Please select a faculty."); return; }
+    if (!formData.skillId) { toast.error("Please select a skill."); return; }
     setIsSaving(true);
     try {
       await onSave(formData);
@@ -175,8 +183,8 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
     }
   };
 
+  // availableSkills calculation (Unchanged)
   const selectedFaculty = faculties.find(f => f.id === formData.facultyId);
-
   const availableSkills = useMemo(() => {
     const facultySkills = selectedFaculty?.skills || [];
     const currentBatchSkillId = batch?.skill?.id;
@@ -187,12 +195,13 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
     return facultySkills;
   }, [selectedFaculty, batch?.skill?.id, skills]);
 
+  // filteredStudents logic (Unchanged)
   const filteredStudents = useMemo(() => {
-    // Show selected students first, then the rest, filtered by search
     const selectedIds = new Set(formData.studentIds);
-    const selected = allStudents.filter(s => selectedIds.has(s.id));
-    const unselected = allStudents.filter(s => !selectedIds.has(s.id));
-
+    const selectedStudents = formData.studentIds
+        .map(id => allStudents.find(student => student && student.id === id)) 
+        .filter((s): s is Student => !!s); 
+    const unselectedStudents = allStudents.filter(s => s && !selectedIds.has(s.id)); 
     const applySearch = (list: Student[]) => {
         if (!studentSearch) return list;
         const lowerCaseSearch = studentSearch.toLowerCase();
@@ -201,12 +210,11 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
             (student.admission_number ?? '').toLowerCase().includes(lowerCaseSearch)
         );
     };
+    return [...selectedStudents, ...applySearch(unselectedStudents)];
+  }, [allStudents, studentSearch, formData.studentIds]);
 
-    return [...selected, ...applySearch(unselected)]; // Show selected students always at the top
-
-  }, [allStudents, studentSearch, formData.studentIds]); // Re-sort when selection changes
-
-  const isLoading = isSaving || isFetchingStudents; // || isAddingStudent;
+  // Combined loading state
+  const isLoading = isSaving || isFetchingInitialStudents || isAddingStudent;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -217,131 +225,77 @@ export function BatchDialog({ open, onOpenChange, batch, faculties, allStudents,
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 py-4">
           <fieldset disabled={isLoading} className="space-y-6">
-            {/* --- Form Fields --- */}
-            {/* (Name, Max Students, Description, Dates, Times, Faculty, Skill, Status, Days) */}
-             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Batch Name</Label>
-                <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="maxStudents">Max Students</Label>
-                <Input id="maxStudents" type="number" min="1" value={formData.maxStudents} onChange={(e) => setFormData({ ...formData, maxStudents: Math.max(1, parseInt(e.target.value) || 15) })} required />
-              </div>
+            {/* --- Form Fields (Unchanged) --- */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label htmlFor="name">Batch Name</Label><Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></div>
+              <div className="space-y-2"><Label htmlFor="maxStudents">Max Students</Label><Input id="maxStudents" type="number" min="1" value={formData.maxStudents} onChange={(e) => setFormData({ ...formData, maxStudents: Math.max(1, parseInt(e.target.value) || 15) })} required /></div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Enter batch description..." />
+            <div className="space-y-2"> <Label htmlFor="description">Description</Label><Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Enter batch description..." /> </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label htmlFor="startDate">Start Date</Label><Input id="startDate" type="date" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} required /></div>
+              <div className="space-y-2"><Label htmlFor="endDate">End Date</Label><Input id="endDate" type="date" value={formData.endDate} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} required /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Start Date</Label>
-                <Input id="startDate" type="date" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="endDate">End Date</Label>
-                <Input id="endDate" type="date" value={formData.endDate} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} required />
-              </div>
+              <div className="space-y-2"><Label htmlFor="startTime">Start Time</Label><Input id="startTime" type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} required /></div>
+              {/* --- FIX: Corrected e.g.value to e.target.value --- */}
+              <div className="space-y-2"><Label htmlFor="endTime">End Time</Label><Input id="endTime" type="time" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} required /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startTime">Start Time</Label>
-                <Input id="startTime" type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="endTime">End Time</Label>
-                <Input id="endTime" type="time" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.g.value })} required />
-              </div>
+              <div className="space-y-2"><Label htmlFor="faculty">Faculty</Label><Select value={formData.facultyId} onValueChange={(value) => setFormData({ ...formData, facultyId: value, skillId: "" })} disabled={faculties.length === 0} required><SelectTrigger><SelectValue placeholder="Select faculty" /></SelectTrigger><SelectContent>{faculties.filter(f => f.isActive).map((faculty) => (<SelectItem key={faculty.id} value={faculty.id}>{faculty.name}</SelectItem>))}</SelectContent></Select></div>
+              <div className="space-y-2"><Label htmlFor="skill">Skill/Subject</Label><Select value={formData.skillId} onValueChange={(value) => setFormData({ ...formData, skillId: value })} disabled={!formData.facultyId || availableSkills.length === 0} required><SelectTrigger><SelectValue placeholder={!formData.facultyId ? "Select a faculty first" : "Select skill"} /></SelectTrigger><SelectContent>{availableSkills.map((skill) => (<SelectItem key={skill.id} value={skill.id}>{skill.name}</SelectItem>))}</SelectContent></Select></div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="faculty">Faculty</Label>
-                <Select value={formData.facultyId} onValueChange={(value) => setFormData({ ...formData, facultyId: value, skillId: "" })} disabled={faculties.length === 0}>
-                  <SelectTrigger><SelectValue placeholder="Select faculty" /></SelectTrigger>
-                  <SelectContent>
-                    {faculties.filter(f => f.isActive).map((faculty) => (
-                      <SelectItem key={faculty.id} value={faculty.id}>{faculty.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="skill">Skill/Subject</Label>
-                <Select value={formData.skillId} onValueChange={(value) => setFormData({ ...formData, skillId: value })} disabled={!formData.facultyId || availableSkills.length === 0} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder={!formData.facultyId ? "Select a faculty first" : "Select skill"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSkills.map((skill) => (
-                      <SelectItem key={skill.id} value={skill.id}>{skill.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select value={formData.status} onValueChange={(value: BatchStatus) => setFormData({ ...formData, status: value })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {BATCH_STATUSES.map((status) => (
-                    <SelectItem key={status} value={status} className="capitalize">{status}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Days of Week</Label>
-              <div className="flex flex-wrap gap-4 pt-2">
-                {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (
-                  <div key={day} className="flex items-center space-x-2">
-                    <Checkbox id={`day-${day}`} checked={formData.daysOfWeek.includes(day)} onCheckedChange={() => handleDayToggle(day)} />
-                    <Label htmlFor={`day-${day}`} className="font-normal">{day}</Label>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <div className="space-y-2"> <Label htmlFor="status">Status</Label><Select value={formData.status} onValueChange={(value: BatchStatus) => setFormData({ ...formData, status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{BATCH_STATUSES.map((status) => (<SelectItem key={status} value={status} className="capitalize">{status}</SelectItem>))}</SelectContent></Select> </div>
+            <div className="space-y-2"> <Label>Days of Week</Label><div className="flex flex-wrap gap-4 pt-2">{["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (<div key={day} className="flex items-center space-x-2"><Checkbox id={`day-${day}`} checked={formData.daysOfWeek.includes(day)} onCheckedChange={() => handleDayToggle(day)} /><Label htmlFor={`day-${day}`} className="font-normal">{day}</Label></div>))}</div> </div>
 
 
-            {/* Student Selection */}
+            {/* Student Selection (Unchanged) */}
             <div className="space-y-2">
               <Label>Students ({formData.studentIds.length} selected)</Label>
-              <Input placeholder="Search students by name or admission number..." value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} className="mb-2" />
+              <Input
+                placeholder="Search students by name or admission number..."
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                className="mb-2"
+              />
               <div className="max-h-64 overflow-y-auto rounded-md border p-2 space-y-1">
-                {isFetchingStudents ? (
+                {isFetchingInitialStudents ? (
                   <div className="flex justify-center items-center h-48">
                     <p className="text-muted-foreground">Loading enrolled students...</p>
                   </div>
                 ) : (
                   filteredStudents.length > 0 ? filteredStudents.map((student) => (
-  <div key={student.id} className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md">
-    <Checkbox
-      id={`student-${student.id}`}
-      checked={formData.studentIds.includes(student.id)}
-      onCheckedChange={() => handleStudentToggle(student.id)}
-    />
-    <Label htmlFor={`student-${student.id}`} className="font-normal w-full cursor-pointer">
-      {student.name} ({student.admission_number})
-    </Label>
-  </div>
-)) : <p className="text-center text-muted-foreground py-4">No students found.</p>
+                    <div key={student.id} className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md">
+                      <Checkbox
+                        id={`student-${student.id}`}
+                        checked={formData.studentIds.includes(student.id)}
+                        onCheckedChange={() => handleStudentToggle(student.id)}
+                      />
+                      <Label htmlFor={`student-${student.id}`} className="font-normal w-full cursor-pointer">
+                        {student.name} ({student.admission_number})
+                      </Label>
+                    </div>
+                  )) : <p className="text-center text-muted-foreground py-4">No students found{studentSearch ? " matching your search" : "."}</p>
                 )}
               </div>
-              {/* Add New Student Form */}
+              {/* Add New Student Form (with loading spinner) */}
               <div className="mt-4 p-4 border rounded-md grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2 items-center">
-                <Input className="lg:col-span-1" placeholder="New Student Name" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} />
-                <Input className="lg:col-span-1" placeholder="Admission No." value={newStudentAdmissionNumber} onChange={(e) => setNewStudentAdmissionNumber(e.target.value)} />
-                <Input className="lg:col-span-1" placeholder="Phone No. (Optional)" value={newStudentPhoneNumber} onChange={(e) => setNewStudentPhoneNumber(e.target.value)} />
-                <Input className="lg:col-span-1" placeholder="Remarks (Optional)" value={newStudentRemarks} onChange={(e) => setNewStudentRemarks(e.target.value)} />
-                <Button type="button" className="lg:col-span-1" onClick={handleAddStudent} disabled={isLoading || !newStudentName || !newStudentAdmissionNumber}>Add Student</Button>
+                 <Input className="lg:col-span-1" placeholder="New Student Name*" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} />
+                 <Input className="lg:col-span-1" placeholder="Admission No.*" value={newStudentAdmissionNumber} onChange={(e) => setNewStudentAdmissionNumber(e.target.value)} />
+                 <Input className="lg:col-span-1" placeholder="Phone No. (Optional)" value={newStudentPhoneNumber} onChange={(e) => setNewStudentPhoneNumber(e.g.value)} />
+                 <Input className="lg:col-span-1" placeholder="Remarks (Optional)" value={newStudentRemarks} onChange={(e) => setNewStudentRemarks(e.target.value)} />
+                 <Button type="button" className="lg:col-span-1" onClick={handleAddStudent} disabled={isLoading || !newStudentName || !newStudentAdmissionNumber}>
+                    {/* --- FIX: Added loading spinner --- */}
+                    {isAddingStudent && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isAddingStudent ? 'Adding...' : 'Add Student'}
+                 </Button>
               </div>
             </div>
           </fieldset>
 
-          {/* Dialog Footer Buttons */}
+          {/* Dialog Footer Buttons (Unchanged) */}
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
-            <Button type="submit" disabled={isLoading}>{isSaving ? "Saving..." : (isFetchingStudents ? "Loading..." : (batch ? "Update Batch" : "Create Batch"))}</Button>
+            <Button type="submit" disabled={isLoading}>{isSaving ? "Saving..." : (isFetchingInitialStudents ? "Loading..." : (batch ? "Update Batch" : "Create Batch"))}</Button>
           </div>
         </form>
       </DialogContent>

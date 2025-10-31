@@ -63,7 +63,6 @@ const isFeePending = (remark: string): boolean => {
   if (!parsedDate) return true; // Treat as pending if date is unparsable but not marked as paid
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  // This logic is already correct: it only returns true if the date is today or in the past.
   return parsedDate <= today;
 };
 
@@ -104,7 +103,7 @@ export const formatFullDate = (dateString: string): string => {
 export default function StudentManagement() {
   // --- 1. Get ALL state and setters from the hook ---
   const { 
-    students, // This list from the hook may include future-dated students
+    students, 
     totalCount, 
     loading, 
     faculties, 
@@ -129,20 +128,8 @@ export default function StudentManagement() {
   const [isBatchesDialogOpen, setIsBatchesDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | undefined>(undefined);
 
-  // --- START OF MODIFICATION ---
-  // Create a new list that applies the frontend-only filter logic
-  // on top of the 'students' list returned from the hook.
-  const filteredStudents = useMemo(() => {
-    // If the filter is OFF, just return the list as-is
-    if (!feePendingFilter) {
-      return students;
-    }
-    // If the filter is ON, apply your frontend 'isFeePending' logic.
-    // This will filter out students with future due dates.
-    return students.filter(student => isFeePending(student.remarks));
-  }, [students, feePendingFilter]); // Re-filter when 'students' or the filter changes
-  // --- END OF MODIFICATION ---
-
+  // --- 3. Remove client-side filtering ---
+  // The 'students' array from the hook IS the filtered list.
 
   // --- 4. Memoize the faculty count map (for the dropdown) ---
   const facultyStudentCountMap = useMemo(() => {
@@ -159,7 +146,6 @@ export default function StudentManagement() {
   // --- END UPDATED SECTION ---
 
   // --- 5. Update Pagination Logic ---
-  // We still use 'totalCount' from the hook so pagination doesn't break
   const totalPages = Math.ceil(totalCount / STUDENTS_PER_PAGE);
   const handlePageChange = (page: number) => { 
     if (page > 0 && page <= totalPages) {
@@ -197,7 +183,7 @@ export default function StudentManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Students</CardTitle>
-          {/* 6. Use totalCount from the hook. This may be slightly inaccurate when filter is on, but keeps pagination working. */}
+          {/* 6. Use totalCount from the hook */}
           <CardDescription>Found {totalCount} total students.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -212,18 +198,16 @@ export default function StudentManagement() {
                 className="pl-8 sm:w-[300px]" 
               />
             </div>
-            
             <div className="flex items-center space-x-2">
                 <Checkbox 
-                  id="fee_overdue"
+                  id="fee_pending" 
                   checked={feePendingFilter} 
                   onCheckedChange={(checked) => setFeePendingFilter(Boolean(checked))} 
                 />
-                <label htmlFor="fee_overdue" className="text-sm font-medium leading-none">
-                    Fee Overdue (Defaulters)
+                <label htmlFor="fee_pending" className="text-sm font-medium leading-none">
+                    Fee Pending
                 </label>
             </div>
-
             <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="unassigned" 
@@ -263,11 +247,11 @@ export default function StudentManagement() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* 8. Iterate over 'filteredStudents' instead of 'students' */}
+                {/* 8. Iterate over 'students' from the hook, not 'paginatedStudents' */}
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-20 w-full" /></TableCell></TableRow>))
-                ) : filteredStudents.length > 0 ? (
-                  filteredStudents.map((student) => (
+                ) : students.length > 0 ? (
+                  students.map((student) => (
                     <TableRow key={student.id} className="block border-b mb-4 last:mb-0 last:border-b-0 md:table-row md:border-b md:mb-0">
                       <TableCell className="flex justify-between items-center p-4 font-medium md:table-cell">
                         <div className="flex items-center gap-3">
@@ -275,8 +259,7 @@ export default function StudentManagement() {
                           <div>
                             <p className="font-semibold text-base flex items-center gap-2">
                               {student.name}
-                              {/* This icon logic is already correct thanks to your 'isFeePending' function */}
-                              {isFeePending(student.remarks) && <span className="h-2.5 w-2.5 block rounded-full bg-red-500" title="Fee Overdue"/>}
+                              {isFeePending(student.remarks) && <span className="h-2.5 w-2.5 block rounded-full bg-red-500" title="Fee Pending"/>}
                             </p>
                             <p className="text-sm text-muted-foreground">{student.admission_number}</p>
                           </div>
@@ -301,7 +284,7 @@ export default function StudentManagement() {
             </Table>
           </div>
 
-          {/* 9. Pagination logic remains unchanged, based on 'totalPages' from the hook */}
+          {/* 9. Wire Pagination to hook state and totalPages */}
           {totalPages > 1 && (
             <div className="mt-4">
               <Pagination>
@@ -315,6 +298,7 @@ export default function StudentManagement() {
                     />
                   </PaginationItem>
                   
+                  {/* Note: This pagination UI is not ideal for many pages, but it matches your code */}
                   {[...Array(totalPages)].map((_, i) => (
                     <PaginationItem key={i}>
                       <PaginationLink 
